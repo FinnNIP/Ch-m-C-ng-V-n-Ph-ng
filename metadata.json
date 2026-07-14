@@ -1,0 +1,8 @@
+{
+  "name": "Chấm Công Văn Phòng",
+  "description": "Hệ thống quản lý chấm công & tăng ca thông minh, đồng bộ hóa trực tiếp với Google Sheets và phân tích báo cáo chi tiết.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
