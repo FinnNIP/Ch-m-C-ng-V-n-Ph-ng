@@ -2,8 +2,26 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Employee, TimeLog, DailyStatus } from '../types';
 import { getVietnamHolidayName } from '../holidays';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Calendar as CalendarIcon, Clock, AlertCircle, ArrowLeft, CheckCircle2, UserCheck, Key, ShieldAlert, LogOut, Download, Activity, Sun, Moon, BookOpen, X } from 'lucide-react';
+import { Search, Calendar as CalendarIcon, Clock, AlertCircle, ArrowLeft, CheckCircle2, UserCheck, Key, ShieldAlert, LogOut, Download, Activity, Sun, Moon, BookOpen, X, RefreshCw } from 'lucide-react';
 import UserGuide from './UserGuide';
+import { getDisplayNameFromList } from '../utils/nameUtils';
+import { RandomLoader } from './RandomLoader';
+import { ThemeToggle } from './ThemeToggle';
+import { playTabSound, playConfirmSound } from '../sound';
+
+// Custom hook to track window size for responsive layout adjustments
+function useWindowSize() {
+  const [size, setSize] = useState({ 
+    width: typeof window !== 'undefined' ? window.innerWidth : 1200,
+    height: typeof window !== 'undefined' ? window.innerHeight : 800 
+  });
+  useEffect(() => {
+    const handleResize = () => setSize({ width: window.innerWidth, height: window.innerHeight });
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+  return size;
+}
 
 interface EmployeePortalProps {
   employees: Employee[];
@@ -14,6 +32,8 @@ interface EmployeePortalProps {
   onToggleDarkMode?: () => void;
   accountantKey?: string;
   departmentPassword?: string;
+  onRefresh?: () => Promise<void>;
+  isOnline?: boolean;
 }
 
 // Helper to calculate OT hours from 'otFrom' and 'otTo'
@@ -108,15 +128,42 @@ export default function EmployeePortal({
   isDarkMode,
   onToggleDarkMode,
   accountantKey = 'visual-accounting',
-  departmentPassword = ''
+  departmentPassword = '',
+  onRefresh,
+  isOnline = true
 }: EmployeePortalProps) {
+  const { width } = useWindowSize();
   const [showGuideModal, setShowGuideModal] = useState<boolean>(false);
+  const [isManualSyncing, setIsManualSyncing] = useState<boolean>(false);
+  const [digitalTime, setDigitalTime] = useState<Date>(new Date());
+
+  // Keep digital clock updating every second
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setDigitalTime(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const handleManualRefresh = async () => {
+    if (onRefresh) {
+      setIsManualSyncing(true);
+      try {
+        await onRefresh();
+      } catch (err) {
+        console.error("Lỗi khi tải lại dữ liệu:", err);
+      } finally {
+        setIsManualSyncing(false);
+      }
+    }
+  };
   const now = new Date();
   const [selectedMonth, setSelectedMonth] = useState<number>(now.getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState<number>(now.getFullYear());
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedEmpName, setSelectedEmpName] = useState<string | null>(null);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [calendarView, setCalendarView] = useState<'grid' | 'list'>('grid');
 
   // Filter employees matching query
   const filteredEmployees = useMemo(() => {
@@ -250,6 +297,7 @@ export default function EmployeePortal({
         }
       } else if (detail.status === 'Nghỉ phép') {
         leaveDays++;
+        presentDays++; // Approved leave is counted as workday ("vẫn tính công")
       } else if (detail.status === 'Ngày lễ') {
         holidayDays++;
       }
@@ -344,58 +392,71 @@ export default function EmployeePortal({
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 space-y-8 animate-fadeIn text-slate-800 dark:text-slate-100">
       {/* Top Welcome Panel */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800/80 pb-6">
-        <div>
-          <span className="text-indigo-600 dark:text-indigo-400 text-xs font-bold font-mono tracking-wider uppercase block mb-1">
+      <div className="border-b border-slate-150 dark:border-slate-800/80 pb-6 space-y-4">
+        <div className="w-full">
+          <span className="text-indigo-600 dark:text-indigo-400 text-xs font-bold font-mono tracking-wider uppercase block mb-1.5">
             Cổng Tra Cứu Thông Tin Cá Nhân
           </span>
-          <h1 id="portal-title" className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-white font-sans flex items-center gap-2">
-            📊 Tra Cứu Công & Phép Phòng Visual
+          <h1 id="portal-title" className="text-2xl md:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white font-sans flex flex-wrap items-center gap-x-2.5 gap-y-1">
+            <span>📊 Tra Cứu Công & Phép</span>
+            <span className="bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 bg-clip-text text-transparent font-black">Phòng Visual</span>
           </h1>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Xem nhanh bảng công, số ngày nghỉ phép, số giờ tăng ca (OT) hằng tháng bảo mật.
+          <p className="text-xs md:text-sm text-slate-500 dark:text-slate-400 mt-2 max-w-2xl leading-relaxed">
+            Xem nhanh bảng công, số ngày nghỉ phép, số giờ tăng ca (OT) hằng tháng bảo mật của từng nhân sự.
           </p>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
-          {onToggleDarkMode && (
+        <div className="flex flex-wrap items-center gap-2 pt-1.5 w-full">
+          {/* Elegant Digital Clock Badge */}
+          <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 dark:bg-slate-900/60 border border-slate-200/50 dark:border-slate-800 rounded-2xl font-mono text-slate-700 dark:text-slate-300 shadow-sm text-xs select-none">
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-indigo-500"></span>
+            </span>
+            <span className="text-indigo-600 dark:text-indigo-400 font-bold tracking-wider">
+              {digitalTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
+            </span>
+            <span className="text-slate-300 dark:text-slate-700 font-sans">|</span>
+            <span className="text-[10px] font-sans font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+              {digitalTime.toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })}
+            </span>
+          </div>
+
+          {/* Connection Status Badge */}
+          <div 
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-2xl text-xs font-bold border transition-all duration-300 ${
+              isOnline 
+                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' 
+                : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20 animate-pulse'
+            }`}
+            title={isOnline ? "Kết nối hoạt động: Đang đồng bộ thời gian thực từ Máy chủ" : "Mất kết nối: Đang sử dụng dữ liệu ngoại tuyến"}
+          >
+            <span className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
+            <span>{isOnline ? "Trực tuyến" : "Ngoại tuyến"}</span>
+          </div>
+
+          {onToggleDarkMode && isDarkMode !== undefined && (
+            <ThemeToggle isDarkMode={isDarkMode} onChange={onToggleDarkMode} />
+          )}
+
+          {onRefresh && (
             <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={onToggleDarkMode}
-              className="p-2.5 bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800 text-slate-600 dark:text-slate-300 rounded-2xl hover:bg-gradient-to-r hover:from-amber-500/10 hover:to-orange-500/10 dark:hover:from-amber-500/20 dark:hover:to-orange-500/20 shadow-sm cursor-pointer flex items-center justify-center gap-1.5 text-xs font-bold hover:border-amber-500/30 dark:hover:border-amber-500/30 overflow-hidden relative"
-              title="Chuyển đổi giao diện"
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={handleManualRefresh}
+              disabled={isManualSyncing || isLoading}
+              className="p-2 px-3.5 bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800 text-slate-600 dark:text-slate-300 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm cursor-pointer flex items-center justify-center gap-1.5 text-xs font-bold transition-colors shrink-0 disabled:opacity-50"
             >
-              <AnimatePresence mode="wait" initial={false}>
-                <motion.div
-                  key={isDarkMode ? "sun" : "moon"}
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  transition={{ duration: 0.2 }}
-                  className="flex items-center gap-1.5"
-                >
-                  {isDarkMode ? (
-                    <>
-                      <Sun className="w-3.5 h-3.5 text-amber-500" />
-                      <span>Sáng</span>
-                    </>
-                  ) : (
-                    <>
-                      <Moon className="w-3.5 h-3.5 text-indigo-400" />
-                      <span>Tối</span>
-                    </>
-                  )}
-                </motion.div>
-              </AnimatePresence>
+              <RefreshCw className={`w-3.5 h-3.5 ${isManualSyncing ? 'animate-spin text-emerald-600 dark:text-emerald-400' : ''}`} />
+              <span>{isManualSyncing ? 'Đang cập nhật...' : 'Cập nhật dữ liệu'}</span>
             </motion.button>
           )}
 
           <motion.button
             whileHover={{ scale: 1.03 }}
-            whileTap={{ scale: 0.98 }}
+            whileTap={{ scale: 0.97 }}
             onClick={() => setShowGuideModal(true)}
-            className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold text-indigo-700 hover:text-indigo-600 dark:text-indigo-400 dark:hover:text-indigo-300 bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-100/30 dark:border-indigo-900/30 rounded-2xl transition-colors shrink-0 cursor-pointer shadow-sm"
+            className="p-2 px-3.5 bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800 text-slate-600 dark:text-slate-300 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm cursor-pointer flex items-center justify-center gap-1.5 text-xs font-bold transition-colors shrink-0"
           >
             <BookOpen className="w-3.5 h-3.5" />
             <span>Hướng dẫn</span>
@@ -403,10 +464,10 @@ export default function EmployeePortal({
 
           {onBackToLogin && (
             <motion.button
-              whileHover={{ scale: 1.03, x: -2 }}
-              whileTap={{ scale: 0.98 }}
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
               onClick={onBackToLogin}
-              className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold text-slate-600 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-indigo-500/30 dark:hover:border-indigo-500/30 transition-colors shrink-0 cursor-pointer shadow-sm"
+              className="p-2 px-3.5 bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800 text-slate-600 dark:text-slate-300 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm cursor-pointer flex items-center justify-center gap-1.5 text-xs font-bold transition-colors shrink-0 ml-auto"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
               <span>Quay lại trang đăng nhập</span>
@@ -424,12 +485,16 @@ export default function EmployeePortal({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: -15 }}
             transition={{ type: "spring", stiffness: 350, damping: 26 }}
-            className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-[32px] p-6 shadow-xl space-y-6 max-w-xl mx-auto text-center"
+            className="bg-white dark:bg-slate-900 border border-slate-150/80 dark:border-slate-800/80 rounded-[24px] p-6 shadow-[4px_4px_0px_0px_rgba(15,23,42,0.06)] dark:shadow-[4px_4px_0px_0px_rgba(255,255,255,0.03)] space-y-6 max-w-xl mx-auto text-center"
           >
             {isLoading ? (
-              <div className="py-6 flex flex-col items-center justify-center space-y-3">
-                <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
-                <p className="text-xs text-slate-500">Đang tải dữ liệu chấm công từ máy chủ...</p>
+              <div className="py-6 flex flex-col items-center justify-center space-y-3 min-h-[250px]">
+                <RandomLoader 
+                  message="Đang tải dữ liệu chấm công từ máy chủ..." 
+                  autoCycle={true}
+                  cycleIntervalMs={2000}
+                  themeColor="text-indigo-600 dark:text-indigo-400"
+                />
               </div>
             ) : employees.length === 0 ? (
               <div className="p-4 bg-amber-50/50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/30 rounded-2xl text-left space-y-2 mb-2 animate-fadeIn">
@@ -492,13 +557,14 @@ export default function EmployeePortal({
                         transition={{ delay: idx * 0.02 }}
                         whileHover={{ x: 6, backgroundColor: "rgba(99, 102, 241, 0.06)" }}
                         onClick={() => {
+                          playConfirmSound();
                           setSelectedEmpName(emp.name);
                           setSearchQuery('');
                           setShowDropdown(false);
                         }}
                         className="w-full px-4 py-3 text-xs flex justify-between items-center text-slate-700 dark:text-slate-200 font-sans cursor-pointer text-left focus:outline-none"
                       >
-                        <span className="font-bold">{emp.name}</span>
+                        <span className="font-bold">{getDisplayNameFromList(emp.name, false, employees, true)}</span>
                         <span className="text-[10px] bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-slate-500 dark:text-slate-400 font-semibold">{emp.role || "Nhân sự"}</span>
                       </motion.button>
                     ))
@@ -520,10 +586,13 @@ export default function EmployeePortal({
                     transition={{ delay: idx * 0.02, type: "spring", stiffness: 350, damping: 25 }}
                     whileHover={{ scale: 1.05, y: -1 }}
                     whileTap={{ scale: 0.95 }}
-                    onClick={() => setSelectedEmpName(emp.name)}
+                    onClick={() => {
+                      playConfirmSound();
+                      setSelectedEmpName(emp.name);
+                    }}
                     className="px-2.5 py-1 bg-slate-50 hover:bg-gradient-to-r hover:from-indigo-600 hover:to-sky-500 hover:text-white dark:bg-slate-950 dark:hover:from-indigo-500 dark:hover:to-sky-450 dark:hover:text-white text-[10px] font-bold text-slate-600 dark:text-slate-400 rounded-xl border border-slate-200/40 dark:border-slate-800/80 transition-all cursor-pointer shadow-sm hover:shadow-indigo-500/15"
                   >
-                    {emp.name}
+                    {getDisplayNameFromList(emp.name, false, employees, true)}
                   </motion.button>
                 ))}
               </div>
@@ -549,18 +618,18 @@ export default function EmployeePortal({
               <span>Chọn nhân sự khác</span>
             </button>
             <span className="text-xs font-mono font-bold text-slate-500 dark:text-slate-400">
-              Nhân viên: <span className="text-slate-850 dark:text-slate-200 font-extrabold">{selectedEmpName}</span>
+              Nhân viên: <span className="text-slate-850 dark:text-slate-200 font-extrabold">{getDisplayNameFromList(selectedEmpName, false, employees, true)}</span>
             </span>
           </div>
 
           {/* Employee profile metadata */}
-          <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 text-white rounded-[32px] p-6 shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div className="bg-gradient-to-r from-indigo-600 to-indigo-850 text-white rounded-[24px] p-6 shadow-[4px_4px_0px_0px_rgba(99,102,241,0.15)] flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div className="flex items-center gap-4">
               <div className="w-14 h-14 rounded-full bg-white/20 border border-white/30 flex items-center justify-center font-extrabold text-white text-xl shadow-lg">
-                {selectedEmpName.charAt(0)}
+                {getDisplayNameFromList(selectedEmpName, false, employees, true).charAt(0)}
               </div>
               <div className="space-y-1">
-                <h3 className="text-lg font-black tracking-tight">{selectedEmpName}</h3>
+                <h3 className="text-lg font-black tracking-tight">{getDisplayNameFromList(selectedEmpName, false, employees, true)}</h3>
                 <p className="text-xs text-indigo-100 flex items-center gap-1.5">
                   <span>Chức vụ: <b>{selectedEmployee?.role || "Nhân viên"}</b></span>
                   <span>•</span>
@@ -596,10 +665,20 @@ export default function EmployeePortal({
           {employeeReport && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <motion.div
-                whileHover={{ y: -4, scale: 1.02 }}
+                whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.98 }}
-                transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-850 p-4.5 rounded-2xl shadow-sm flex items-center gap-3 cursor-pointer"
+                onMouseMove={(e) => {
+                  const el = e.currentTarget;
+                  const rect = el.getBoundingClientRect();
+                  const x = e.clientX - rect.left - rect.width / 2;
+                  const y = e.clientY - rect.top - rect.height / 2;
+                  el.style.transform = `perspective(1000px) rotateX(${-y / 10}deg) rotateY(${x / 10}deg) scale3d(1.03, 1.03, 1.03)`;
+                }}
+                onMouseLeave={(e) => {
+                  const el = e.currentTarget;
+                  el.style.transform = `perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)`;
+                }}
+                className="bg-white dark:bg-slate-900 border border-slate-150/80 dark:border-slate-800/80 p-5 rounded-2xl shadow-[4px_4px_0px_0px_rgba(15,23,42,0.06)] dark:shadow-[4px_4px_0px_0px_rgba(255,255,255,0.03)] flex items-center gap-3 cursor-pointer transition-all duration-200"
               >
                 <div className="w-10 h-10 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 rounded-xl flex items-center justify-center shrink-0">
                   <CheckCircle2 className="w-5 h-5" />
@@ -611,10 +690,20 @@ export default function EmployeePortal({
               </motion.div>
 
               <motion.div
-                whileHover={{ y: -4, scale: 1.02 }}
+                whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.98 }}
-                transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-850 p-4.5 rounded-2xl shadow-sm flex items-center gap-3 cursor-pointer"
+                onMouseMove={(e) => {
+                  const el = e.currentTarget;
+                  const rect = el.getBoundingClientRect();
+                  const x = e.clientX - rect.left - rect.width / 2;
+                  const y = e.clientY - rect.top - rect.height / 2;
+                  el.style.transform = `perspective(1000px) rotateX(${-y / 10}deg) rotateY(${x / 10}deg) scale3d(1.03, 1.03, 1.03)`;
+                }}
+                onMouseLeave={(e) => {
+                  const el = e.currentTarget;
+                  el.style.transform = `perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)`;
+                }}
+                className="bg-white dark:bg-slate-900 border border-slate-150/80 dark:border-slate-800/80 p-5 rounded-2xl shadow-[4px_4px_0px_0px_rgba(15,23,42,0.06)] dark:shadow-[4px_4px_0px_0px_rgba(255,255,255,0.03)] flex items-center gap-3 cursor-pointer transition-all duration-200"
               >
                 <div className="w-10 h-10 bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 rounded-xl flex items-center justify-center shrink-0">
                   <Clock className="w-5 h-5" />
@@ -626,10 +715,20 @@ export default function EmployeePortal({
               </motion.div>
 
               <motion.div
-                whileHover={{ y: -4, scale: 1.02 }}
+                whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.98 }}
-                transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-850 p-4.5 rounded-2xl shadow-sm flex items-center gap-3 cursor-pointer"
+                onMouseMove={(e) => {
+                  const el = e.currentTarget;
+                  const rect = el.getBoundingClientRect();
+                  const x = e.clientX - rect.left - rect.width / 2;
+                  const y = e.clientY - rect.top - rect.height / 2;
+                  el.style.transform = `perspective(1000px) rotateX(${-y / 10}deg) rotateY(${x / 10}deg) scale3d(1.03, 1.03, 1.03)`;
+                }}
+                onMouseLeave={(e) => {
+                  const el = e.currentTarget;
+                  el.style.transform = `perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)`;
+                }}
+                className="bg-white dark:bg-slate-900 border border-slate-150/80 dark:border-slate-800/80 p-5 rounded-2xl shadow-[4px_4px_0px_0px_rgba(15,23,42,0.06)] dark:shadow-[4px_4px_0px_0px_rgba(255,255,255,0.03)] flex items-center gap-3 cursor-pointer transition-all duration-200"
               >
                 <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-xl flex items-center justify-center shrink-0">
                   <CalendarIcon className="w-5 h-5" />
@@ -641,10 +740,20 @@ export default function EmployeePortal({
               </motion.div>
 
               <motion.div
-                whileHover={{ y: -4, scale: 1.02 }}
+                whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.98 }}
-                transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-850 p-4.5 rounded-2xl shadow-sm flex items-center gap-3 cursor-pointer"
+                onMouseMove={(e) => {
+                  const el = e.currentTarget;
+                  const rect = el.getBoundingClientRect();
+                  const x = e.clientX - rect.left - rect.width / 2;
+                  const y = e.clientY - rect.top - rect.height / 2;
+                  el.style.transform = `perspective(1000px) rotateX(${-y / 10}deg) rotateY(${x / 10}deg) scale3d(1.03, 1.03, 1.03)`;
+                }}
+                onMouseLeave={(e) => {
+                  const el = e.currentTarget;
+                  el.style.transform = `perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)`;
+                }}
+                className="bg-white dark:bg-slate-900 border border-slate-150/80 dark:border-slate-800/80 p-5 rounded-2xl shadow-[4px_4px_0px_0px_rgba(15,23,42,0.06)] dark:shadow-[4px_4px_0px_0px_rgba(255,255,255,0.03)] flex items-center gap-3 cursor-pointer transition-all duration-200"
               >
                 <div className="w-10 h-10 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 rounded-xl flex items-center justify-center shrink-0">
                   <AlertCircle className="w-5 h-5" />
@@ -659,7 +768,11 @@ export default function EmployeePortal({
 
           {/* Annual Leave Fund (Quỹ phép năm hằng năm) */}
           {employeeReport && (
-            <div className="bg-gradient-to-r from-amber-500/5 to-orange-500/5 dark:from-amber-950/10 dark:to-orange-950/10 border border-amber-500/10 dark:border-amber-900/20 rounded-3xl p-5 space-y-4">
+            <motion.div 
+              whileHover={{ y: -2 }}
+              transition={{ type: "spring", stiffness: 400, damping: 25 }}
+              className="bg-white dark:bg-slate-900 border border-slate-150/80 dark:border-slate-800/80 rounded-[24px] p-6 shadow-[4px_4px_0px_0px_rgba(15,23,42,0.06)] dark:shadow-[4px_4px_0px_0px_rgba(255,255,255,0.03)] space-y-4 cursor-pointer"
+            >
               <div className="flex items-center gap-2">
                 <span className="text-lg">⚖️</span>
                 <h4 className="font-bold text-sm text-slate-800 dark:text-amber-200">Quỹ Nghỉ Phép Năm Cả Năm ({selectedYear})</h4>
@@ -714,7 +827,10 @@ export default function EmployeePortal({
                     </div>
                   ) : (
                     employeeReport.ytdLeaveLogs.map((log, index) => (
-                      <div key={index} className="p-2.5 px-4 text-xs flex justify-between items-center">
+                      <div 
+                        key={index} 
+                        className="p-2.5 px-4 text-xs flex justify-between items-center hover:bg-amber-500/5 dark:hover:bg-amber-950/20 rounded-lg transition-colors duration-200 cursor-pointer"
+                      >
                         <span className="font-mono bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded font-bold">{log.date}</span>
                         <span className="text-slate-500 dark:text-slate-400 text-[11px] italic">"{log.note || "Nghỉ phép hằng năm"}"</span>
                       </div>
@@ -722,73 +838,262 @@ export default function EmployeePortal({
                   )}
                 </div>
               </div>
-            </div>
+            </motion.div>
           )}
 
           {/* Attendance Calendar Grid */}
-          {employeeReport && (
-            <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-[32px] p-6 shadow-sm space-y-4">
-              <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800/80 pb-3">
-                <h4 className="font-bold text-sm text-slate-850 dark:text-white flex items-center gap-2">
-                  📅 Lịch Chấm Công Cá Nhân Tháng {selectedMonth}/{selectedYear}
-                </h4>
-                <div className="flex flex-wrap gap-2 text-[9px] font-bold">
-                  <div className="flex items-center gap-1">
-                    <div className="w-2.5 h-2.5 rounded-sm bg-emerald-500" />
-                    <span>Đi làm</span>
+          {employeeReport && (() => {
+            const firstDay = new Date(selectedYear, selectedMonth - 1, 1).getDay();
+            const startingOffset = firstDay === 0 ? 6 : firstDay - 1; // Monday=0, Sunday=6
+            const calendarGap = 'gap-2';
+            const calendarPadding = 'p-3';
+
+            return (
+              <motion.div 
+                whileHover={{ y: -2 }}
+                transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                className="bg-white dark:bg-slate-900 border border-slate-150/80 dark:border-slate-800/80 rounded-[24px] p-6 shadow-[4px_4px_0px_0px_rgba(15,23,42,0.06)] dark:shadow-[4px_4px_0px_0px_rgba(255,255,255,0.03)] space-y-5 cursor-pointer relative"
+              >
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800/40 pb-4">
+                  <div className="space-y-1">
+                    <h4 className="font-bold text-sm text-slate-850 dark:text-white flex items-center gap-2">
+                      📅 Lịch Chấm Công Cá Nhân Tháng {selectedMonth}/{selectedYear}
+                    </h4>
+                    <p className="text-[11px] text-slate-400 dark:text-slate-500 font-medium">
+                      Nhấp vào từng ngày để xem chi tiết ghi chú chấm công và lịch sử tăng ca (OT).
+                    </p>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <div className="w-2.5 h-2.5 rounded-sm bg-amber-500" />
-                    <span>Phép</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <div className="w-2.5 h-2.5 rounded-sm bg-rose-500" />
-                    <span>Vắng</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <div className="w-2.5 h-2.5 rounded-sm border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/30 text-slate-350 dark:text-slate-650" />
-                    <span>Chưa vào làm</span>
+                  
+                  {/* View switcher and Legend inline container */}
+                  <div className="flex flex-wrap items-center gap-3 shrink-0">
+                    {/* View Switcher Toggle */}
+                    <div className="flex bg-slate-100/80 dark:bg-slate-950/60 p-1 rounded-xl border border-slate-200/40 dark:border-slate-850/60">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setCalendarView('grid'); }}
+                        className={`px-3 py-1.5 text-[10.5px] font-bold rounded-lg transition-all ${
+                          calendarView === 'grid'
+                            ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                            : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+                        }`}
+                      >
+                        Dạng Lưới
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setCalendarView('list'); }}
+                        className={`px-3 py-1.5 text-[10.5px] font-bold rounded-lg transition-all ${
+                          calendarView === 'list'
+                            ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                            : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+                        }`}
+                      >
+                        Dạng Danh Sách
+                      </button>
+                    </div>
+
+                    {/* Color legends with elegant small status indicator dots */}
+                    <div className="flex flex-wrap gap-x-3 gap-y-1.5 text-[10px] font-medium text-slate-500 dark:text-slate-400">
+                      <div className="flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 ring-4 ring-emerald-500/10" />
+                        <span>Đi làm</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 ring-4 ring-amber-500/10" />
+                        <span>Phép</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500 ring-4 ring-rose-500/10" />
+                        <span>Vắng</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full border border-dashed border-slate-400 dark:border-slate-600 bg-slate-50 dark:bg-slate-900" />
+                        <span>Chưa vào làm</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Grid */}
-              <div className="grid grid-cols-7 sm:grid-cols-10 md:grid-cols-15 lg:grid-cols-31 gap-1.5 pt-1">
-                {Array.from({ length: totalDaysInMonth }, (_, i) => {
-                  const day = i + 1;
-                  const detail = employeeReport.dailyDetails[day];
-                  const dayOfWeek = new Date(selectedYear, selectedMonth - 1, day).getDay();
-                  const isWeekend = dayOfWeek === 0;
-
-                  let colorClass = 'bg-slate-100 dark:bg-slate-850 text-slate-450 dark:text-slate-500'; // Sunday Default
-                  if (detail.status === 'Có đi làm') colorClass = 'bg-emerald-500 text-white';
-                  else if (detail.status === 'Nghỉ phép') colorClass = 'bg-amber-500 text-white';
-                  else if (detail.status === 'Ngày lễ') colorClass = 'bg-pink-500 text-white font-bold ring-1 ring-pink-300';
-                  else if (detail.status === 'Không đi làm') colorClass = 'bg-rose-500 text-white';
-                  else if (detail.status === 'Chưa vào làm') colorClass = 'bg-slate-50/50 dark:bg-slate-900/10 text-slate-300 dark:text-slate-700 border border-dashed border-slate-200 dark:border-slate-800/80';
-
-                  return (
-                    <div
-                      key={day}
-                      title={`${day}/${selectedMonth} - ${detail.status}${detail.note ? ` (${detail.note})` : ''}`}
-                      className={`aspect-square rounded-lg flex flex-col items-center justify-center p-0.5 transition-transform hover:scale-105 shadow-xs ${colorClass}`}
+                <AnimatePresence mode="wait">
+                  {calendarView === 'grid' ? (
+                    <motion.div
+                      key="grid-view"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      transition={{ duration: 0.15 }}
+                      className="w-full pt-1"
                     >
-                      <span className="text-[10px] font-extrabold">{day}</span>
-                      {detail.otFrom && detail.otTo && (
-                        <span className="text-[7px] font-bold px-0.5 rounded bg-black/20 text-white">OT</span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+                      {/* Days of week header */}
+                      <div className="grid grid-cols-7 gap-2 text-center text-[10.5px] font-bold text-slate-400 dark:text-slate-500 pb-2.5 border-b border-slate-100 dark:border-slate-800/40 mb-3">
+                        <span>Thứ Hai</span>
+                        <span>Thứ Ba</span>
+                        <span>Thứ Tư</span>
+                        <span>Thứ Năm</span>
+                        <span>Thứ Sáu</span>
+                        <span>Thứ Bảy</span>
+                        <span className="text-rose-500">Chủ Nhật</span>
+                      </div>
+
+                      {/* Days grid - expanded to full width to completely resolve lateral gaps */}
+                      <div className={`grid grid-cols-7 ${calendarGap}`}>
+                        {/* Empty spacer cells */}
+                        {Array.from({ length: startingOffset }).map((_, idx) => (
+                          <div 
+                            key={`empty-${idx}`} 
+                            className="aspect-[1.1] rounded-2xl bg-slate-50/10 dark:bg-slate-900/5 border border-slate-100/20 dark:border-slate-800/10" 
+                          />
+                        ))}
+
+                        {/* Actual days */}
+                        {Array.from({ length: totalDaysInMonth }, (_, i) => {
+                          const day = i + 1;
+                          const detail = employeeReport.dailyDetails[day];
+                          const dayOfWeek = new Date(selectedYear, selectedMonth - 1, day).getDay();
+                          const isSunday = dayOfWeek === 0;
+
+                          let cellClass = '';
+                          let dotColor = '';
+
+                          if (detail.status === 'Có đi làm') {
+                            cellClass = 'bg-emerald-500/8 dark:bg-emerald-500/12 text-emerald-600 dark:text-emerald-400 border border-emerald-500/15 dark:border-emerald-500/25 font-bold shadow-xs';
+                            dotColor = 'bg-emerald-500';
+                          } else if (detail.status === 'Nghỉ phép') {
+                            cellClass = 'bg-amber-500/8 dark:bg-amber-500/12 text-amber-600 dark:text-amber-400 border border-amber-500/15 dark:border-amber-500/25 font-bold shadow-xs';
+                            dotColor = 'bg-amber-500';
+                          } else if (detail.status === 'Ngày lễ') {
+                            cellClass = 'bg-pink-500/8 dark:bg-pink-500/12 text-pink-600 dark:text-pink-400 border border-pink-500/20 dark:border-pink-500/30 font-bold shadow-xs';
+                            dotColor = 'bg-pink-500';
+                          } else if (detail.status === 'Không đi làm') {
+                            cellClass = 'bg-rose-500/8 dark:bg-rose-500/12 text-rose-600 dark:text-rose-400 border border-rose-500/15 dark:border-rose-500/25 font-bold shadow-xs';
+                            dotColor = 'bg-rose-500';
+                          } else if (detail.status === 'Chưa vào làm') {
+                            cellClass = 'bg-slate-50/20 dark:bg-slate-900/5 text-slate-350 dark:text-slate-600 border border-dashed border-slate-150 dark:border-slate-800/40';
+                          } else {
+                            // Weekend / Sunday fallback
+                            cellClass = 'bg-slate-100/50 dark:bg-slate-850/40 text-slate-450 dark:text-slate-500 border border-slate-150/40 dark:border-slate-800/30';
+                          }
+
+                          return (
+                            <div
+                              key={day}
+                              title={`${day}/${selectedMonth} - ${detail.status}${detail.note ? ` (${detail.note})` : ''}`}
+                              className={`aspect-[1.1] rounded-2xl flex flex-col items-center justify-center cursor-pointer relative select-none transition-all duration-200 hover:-translate-y-1 hover:shadow-[4px_4px_0px_0px_#6366f1] dark:hover:shadow-[4px_4px_0px_0px_#4f46e5] hover:border-indigo-500/50 dark:hover:border-indigo-400/50 active:translate-y-0 active:shadow-none ${calendarPadding} ${cellClass}`}
+                            >
+                              <span className="text-xs sm:text-sm font-bold tracking-tight">{day}</span>
+                              
+                              {/* Elegant tiny status indicator dot */}
+                              {dotColor && (
+                                <span className={`w-1.5 h-1.5 rounded-full ${dotColor} mt-1 shadow-sm`} />
+                              )}
+                              
+                              {/* Elegant Overtime Indicator */}
+                              {detail.otFrom && detail.otTo && (
+                                <span className="absolute top-1 right-1.5 text-[6.5px] font-extrabold px-1 py-0.2 rounded bg-purple-150 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 border border-purple-200/30 scale-90">
+                                  OT
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </motion.div>
+                  ) : (
+                    /* Elegant Summary List view that perfectly scales horizontally with ZERO visual gaps */
+                    <motion.div
+                      key="list-view"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      transition={{ duration: 0.15 }}
+                      className="w-full pt-1 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 max-h-[480px] overflow-y-auto pr-1.5 custom-scrollbar"
+                    >
+                      {Array.from({ length: totalDaysInMonth }, (_, i) => {
+                        const day = i + 1;
+                        const detail = employeeReport.dailyDetails[day];
+                        const dateObj = new Date(selectedYear, selectedMonth - 1, day);
+                        const weekdays = ["Chủ Nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"];
+                        const dayOfWeekStr = weekdays[dateObj.getDay()];
+                        const isSunday = dateObj.getDay() === 0;
+
+                        // Identify status badge color
+                        let badgeClass = '';
+                        if (detail.status === 'Có đi làm') {
+                          badgeClass = 'bg-emerald-100 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200/20';
+                        } else if (detail.status === 'Nghỉ phép') {
+                          badgeClass = 'bg-amber-100 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border border-amber-200/20';
+                        } else if (detail.status === 'Ngày lễ') {
+                          badgeClass = 'bg-pink-100 dark:bg-pink-950/30 text-pink-700 dark:text-pink-400 border border-pink-200/20';
+                        } else if (detail.status === 'Không đi làm') {
+                          badgeClass = 'bg-rose-100 dark:bg-rose-950/30 text-rose-700 dark:text-rose-400 border border-rose-200/20';
+                        } else if (detail.status === 'Chưa vào làm') {
+                          badgeClass = 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border border-dashed border-slate-200 dark:border-slate-700';
+                        } else {
+                          badgeClass = 'bg-slate-50 dark:bg-slate-850 text-slate-500 dark:text-slate-400 border border-slate-200/40';
+                        }
+
+                        return (
+                          <div 
+                            key={day}
+                            className="flex flex-col justify-between p-3.5 bg-slate-50/60 dark:bg-slate-900/40 hover:bg-slate-100/80 dark:hover:bg-slate-900/80 border border-slate-150/50 dark:border-slate-800/60 rounded-2xl transition-all duration-150 gap-2.5 hover:scale-[1.02] hover:shadow-sm"
+                          >
+                            {/* Day and Weekday Row */}
+                            <div className="flex justify-between items-center pb-2 border-b border-slate-100/50 dark:border-slate-850/40">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-mono font-black text-indigo-600 dark:text-indigo-400">
+                                  {String(day).padStart(2, '0')}
+                                </span>
+                                <span className={`text-xs font-bold ${isSunday ? 'text-rose-500' : 'text-slate-600 dark:text-slate-350'}`}>
+                                  {dayOfWeekStr}
+                                </span>
+                              </div>
+                              {detail.otFrom && detail.otTo && (
+                                <span className="bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-400 font-extrabold px-1.5 py-0.5 rounded text-[9px] border border-purple-200/30">
+                                  OT
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Status badge */}
+                            <div className="flex items-center">
+                              <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full ${badgeClass} truncate max-w-full`} title={detail.status}>
+                                {detail.status}
+                                {detail.holidayName ? ` (${detail.holidayName})` : ''}
+                              </span>
+                            </div>
+
+                            {/* Extra details (OT or note) */}
+                            {(detail.note || (detail.otFrom && detail.otTo)) && (
+                              <div className="space-y-1.5 pt-1">
+                                {detail.otFrom && detail.otTo && (
+                                  <div className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                                    ⏱️ Giờ OT: {detail.otFrom} - {detail.otTo}
+                                  </div>
+                                )}
+                                {detail.note && (
+                                  <div className="text-[10px] text-slate-400 dark:text-slate-500 italic truncate max-w-full" title={detail.note}>
+                                    " {detail.note} "
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
+            );
+          })()}
 
           {/* Detailed Overtime & Work logs list */}
           {employeeReport && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Overtime details list */}
-              <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-850 rounded-[28px] p-5 shadow-sm space-y-3.5">
+              <motion.div 
+                whileHover={{ y: -2 }}
+                transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                className="bg-white dark:bg-slate-900 border border-slate-150/80 dark:border-slate-800/80 rounded-[24px] p-6 shadow-[4px_4px_0px_0px_rgba(15,23,42,0.06)] dark:shadow-[4px_4px_0px_0px_rgba(255,255,255,0.03)] space-y-3.5 cursor-pointer relative"
+              >
                 <h4 className="font-bold text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
                   <Clock className="w-4 h-4 text-purple-500" />
                   Danh Sách Giờ Tăng Ca (OT) Tháng này
@@ -801,26 +1106,33 @@ export default function EmployeePortal({
                     </div>
                   ) : (
                     employeeReport.monthlyLogs.filter(l => l.otFrom && l.otTo).map((log, index) => (
-                      <div key={index} className="py-2.5 flex justify-between items-center text-xs">
+                      <div 
+                        key={index} 
+                        className="py-2.5 px-3.5 flex justify-between items-center text-xs hover:bg-purple-500/5 dark:hover:bg-purple-950/20 rounded-xl cursor-pointer transition-colors duration-150"
+                      >
                         <div>
-                          <span className="font-mono font-bold text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-950 px-2 py-0.5 rounded mr-2">
-                            {log.date}
-                          </span>
-                          <span className="text-slate-600 dark:text-slate-400">
-                            {log.otFrom} - {log.otTo}
-                          </span>
+                           <span className="font-mono font-bold text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-950 px-2 py-0.5 rounded mr-2">
+                             {log.date}
+                           </span>
+                           <span className="text-slate-600 dark:text-slate-400">
+                             {log.otFrom} - {log.otTo}
+                           </span>
                         </div>
                         <span className="font-extrabold text-purple-600 dark:text-purple-400">
-                          +{calculateOtHours(log.otFrom, log.otTo).toFixed(1)}h
-                        </span>
+                           +{calculateOtHours(log.otFrom, log.otTo).toFixed(1)}h
+                         </span>
                       </div>
                     ))
                   )}
                 </div>
-              </div>
+              </motion.div>
 
               {/* Attendance comments / Ghi chú */}
-              <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-850 rounded-[28px] p-5 shadow-sm space-y-3.5">
+              <motion.div 
+                whileHover={{ y: -2 }}
+                transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                className="bg-white dark:bg-slate-900 border border-slate-150/80 dark:border-slate-800/80 rounded-[24px] p-6 shadow-[4px_4px_0px_0px_rgba(15,23,42,0.06)] dark:shadow-[4px_4px_0px_0px_rgba(255,255,255,0.03)] space-y-3.5 cursor-pointer relative"
+              >
                 <h4 className="font-bold text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
                   <Activity className="w-4 h-4 text-indigo-500" />
                   Nhật Ký Chú Thích Hoạt Động
@@ -833,7 +1145,10 @@ export default function EmployeePortal({
                     </div>
                   ) : (
                     employeeReport.monthlyLogs.filter(l => l.note).map((log, index) => (
-                      <div key={index} className="py-2.5 text-xs flex flex-col gap-1">
+                      <div 
+                        key={index} 
+                        className="py-2.5 px-3.5 text-xs flex flex-col gap-1 hover:bg-indigo-500/5 dark:hover:bg-indigo-950/20 rounded-xl cursor-pointer transition-colors duration-150"
+                      >
                         <div className="flex justify-between items-center">
                           <span className="font-mono font-bold text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-950 px-2 py-0.5 rounded">
                             {log.date}
@@ -845,7 +1160,7 @@ export default function EmployeePortal({
                     ))
                   )}
                 </div>
-              </div>
+              </motion.div>
             </div>
           )}
         </motion.div>
@@ -870,20 +1185,12 @@ export default function EmployeePortal({
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="bg-slate-50 dark:bg-slate-950 rounded-[32px] border border-slate-100 dark:border-slate-800 w-full max-w-4xl max-h-[85vh] overflow-y-auto p-6 md:p-8 relative z-10 shadow-2xl"
+            className="bg-slate-50 dark:bg-slate-950 rounded-[24px] border border-slate-100 dark:border-slate-800 w-full max-w-4xl max-h-[85vh] overflow-y-auto p-6 md:p-8 relative z-10 shadow-2xl"
           >
-            {/* Close Button */}
-            <button
-              onClick={() => setShowGuideModal(false)}
-              className="absolute top-5 right-5 p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer flex items-center justify-center border border-slate-200/40"
-              title="Đóng cửa sổ"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
             <UserGuide 
               accountantKey={accountantKey}
               departmentPassword={departmentPassword}
+              showSensitiveInfo={false}
             />
           </motion.div>
         </div>

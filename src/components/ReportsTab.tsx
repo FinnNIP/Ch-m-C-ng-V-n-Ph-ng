@@ -1,10 +1,14 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Employee, TimeLog, EmployeeMonthlyReport, DailyStatus } from '../types';
 import { updateTimeLog, deleteTimeLog } from '../sheets';
 import { getVietnamHolidayName } from '../holidays';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
-import { Calendar as CalendarIcon, Clock, Users, CheckCircle, AlertTriangle, ChevronDown, ChevronUp, FileSpreadsheet, Sliders, Edit2, Trash2, Share2, Copy, Check, Printer, FileText, X, LogOut, Search, RefreshCw } from 'lucide-react';
+import { getExportName, getEmployeeDisplayName, getDisplayNameFromList } from '../utils/nameUtils';
+import { RandomLoader } from './RandomLoader';
+import { playConfirmSound, playTabSound } from '../sound';
+import * as htmlToImage from 'html-to-image';
+import { BarChart, Bar, XAxis,YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area, ComposedChart, Line } from 'recharts';
+import { Calendar as CalendarIcon, Clock, Users, CheckCircle, AlertTriangle, ChevronDown, ChevronUp, FileSpreadsheet, Sliders, Edit2, Trash2, Share2, Copy, Check, Printer, FileText, X, LogOut, Search, RefreshCw, Coins, TrendingUp, Calculator, Settings, Download } from 'lucide-react';
 
 interface ReportsTabProps {
   accessToken: string;
@@ -12,6 +16,7 @@ interface ReportsTabProps {
   timeLogs: TimeLog[];
   onLogUpdated: () => void;
   role?: 'admin' | 'accountant';
+  isLoading?: boolean;
 }
 
 // Helper to calculate OT hours from 'otFrom' and 'otTo'
@@ -117,7 +122,8 @@ function isDateAfterLeft(year: number, month: number, day: number, leftAtStr?: s
   return day > parsedLeft.day;
 }
 
-export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpdated, role = 'admin' }: ReportsTabProps) {
+const ReportsTab = React.memo(function ReportsTab({ accessToken, employees, timeLogs, onLogUpdated, role = 'admin', isLoading = false }: ReportsTabProps) {
+  const isAdmin = role === 'admin';
   const now = new Date();
   const [selectedMonth, setSelectedMonth] = useState<number>(now.getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState<number>(now.getFullYear());
@@ -125,6 +131,7 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
   const [subTab, setSubTab] = useState<'summary' | 'calendar' | 'leave'>('summary');
   const [leaveCalcMode, setLeaveCalcMode] = useState<'standard' | 'accountant'>('standard');
   const [searchTerm, setSearchTerm] = useState<string>("");
+  const [calendarView, setCalendarView] = useState<'grid' | 'list'>('grid');
 
   // Lazy loading states for rendering optimization
   const [isChartsLoaded, setIsChartsLoaded] = useState(false);
@@ -155,11 +162,144 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
   const [isDeleting, setIsDeleting] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [showPdfPreview, setShowPdfPreview] = useState(false);
+  const reportRef = useRef<HTMLDivElement>(null);
+  const hiddenReportRef = useRef<HTMLDivElement>(null);
+  const [isDownloadingPng, setIsDownloadingPng] = useState(false);
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  const [isDownloadingExcel, setIsDownloadingExcel] = useState(false);
+
+  const handleDownloadPng = useCallback(async () => {
+    const targetNode = reportRef.current || hiddenReportRef.current;
+    if (!targetNode) return;
+    setIsDownloadingPng(true);
+    try {
+      // Temporarily remove .dark to capture beautiful light-mode visual output
+      const isDark = document.documentElement.classList.contains('dark');
+      if (isDark) {
+        document.documentElement.classList.remove('dark');
+      }
+
+      // Wait a brief microtask for layout & style recalculations
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      const blob = await htmlToImage.toBlob(targetNode, {
+        quality: 1.0,
+        pixelRatio: 2, // High DPI scaling for crisp display text
+        backgroundColor: '#ffffff',
+        cacheBust: true,
+        filter: (node: Element) => {
+          if (node.classList && node.classList.contains('no-print')) {
+            return false;
+          }
+          return true;
+        },
+      });
+
+      // Restore dark mode if it was originally active
+      if (isDark) {
+        document.documentElement.classList.add('dark');
+      }
+
+      if (!blob) {
+        throw new Error("Không thể tạo dữ liệu ảnh PNG.");
+      }
+
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.download = `Bao_Cao_Cham_Cong_Thang_${selectedMonth}_${selectedYear}.png`;
+      link.href = blobUrl;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      setTimeout(() => {
+        URL.revokeObjectURL(blobUrl);
+      }, 10000);
+    } catch (err) {
+      console.error('Error generating PNG:', err);
+      alert('Không thể xuất ảnh PNG. Vui lòng tải lại trang và thử lại.');
+    } finally {
+      setIsDownloadingPng(false);
+    }
+  }, [selectedMonth, selectedYear]);
+
+  const handleDownloadPdf = useCallback(async () => {
+    const targetNode = reportRef.current || hiddenReportRef.current;
+    if (!targetNode) return;
+    setIsDownloadingPdf(true);
+    try {
+      // Temporarily remove .dark to capture beautiful light-mode visual output
+      const isDark = document.documentElement.classList.contains('dark');
+      if (isDark) {
+        document.documentElement.classList.remove('dark');
+      }
+
+      // Wait a brief microtask for layout & style recalculations
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      const dataUrl = await htmlToImage.toPng(targetNode, {
+        quality: 1.0,
+        pixelRatio: 2.5, // High DPI scaling for extremely crisp PDF texts
+        backgroundColor: '#ffffff',
+        cacheBust: true,
+        filter: (node: Element) => {
+          if (node.classList && node.classList.contains('no-print')) {
+            return false;
+          }
+          return true;
+        },
+      });
+
+      // Restore dark mode if it was originally active
+      if (isDark) {
+        document.documentElement.classList.add('dark');
+      }
+
+      // Import jsPDF dynamically to keep bundle light
+      const { jsPDF } = await import('jspdf');
+
+      // Setup landscape A4 document (297 x 210 mm)
+      const pdf = new jsPDF({
+        orientation: 'landscape',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      pdf.addImage(dataUrl, 'PNG', 0, 0, 297, 210, undefined, 'FAST');
+      pdf.save(`Bao_Cao_Cham_Cong_Thang_${selectedMonth}_${selectedYear}.pdf`);
+    } catch (err) {
+      console.error('Error generating PDF via jsPDF:', err);
+      alert('Có lỗi khi tạo PDF. Vui lòng thử lại.');
+    } finally {
+      setIsDownloadingPdf(false);
+    }
+  }, [selectedMonth, selectedYear]);
 
   // States for PDF Letterhead Customization (Persistent)
-  const [pdfCompanyName, setPdfCompanyName] = useState(() => localStorage.getItem('pdf_company_name') || "CÔNG TY SẢN XUẤT PHÒNG VISUAL");
-  const [pdfAddress, setPdfAddress] = useState(() => localStorage.getItem('pdf_address') || "Địa chỉ: Tòa nhà Sông Đà, Phạm Hùng, Mỹ Đình, Hà Nội");
-  const [pdfHotlineEmail, setPdfHotlineEmail] = useState(() => localStorage.getItem('pdf_hotline_email') || "Hotline: 024.123.4567 | Email: contact@visualroom.com");
+  const [pdfCompanyName, setPdfCompanyName] = useState(() => {
+    const saved = localStorage.getItem('pdf_company_name');
+    if (!saved || saved === "CÔNG TY SẢN XUẤT PHÒNG VISUAL") {
+      localStorage.setItem('pdf_company_name', "EGYPT");
+      return "EGYPT";
+    }
+    return saved;
+  });
+  const [pdfAddress, setPdfAddress] = useState(() => {
+    const saved = localStorage.getItem('pdf_address');
+    if (!saved || saved === "Địa chỉ: Tòa nhà Sông Đà, Phạm Hùng, Mỹ Đình, Hà Nội") {
+      localStorage.setItem('pdf_address', "Địa chỉ: 41 Hoa Đào Phường Cầu Kiệu");
+      return "Địa chỉ: 41 Hoa Đào Phường Cầu Kiệu";
+    }
+    return saved;
+  });
+  const [pdfHotlineEmail, setPdfHotlineEmail] = useState(() => {
+    const saved = localStorage.getItem('pdf_hotline_email');
+    if (!saved || saved === "Hotline: 024.123.4567 | Email: contact@visualroom.com") {
+      localStorage.setItem('pdf_hotline_email', "Hotline: 0909488487 | Email: dddung487@gmail.com");
+      return "Hotline: 0909488487 | Email: dddung487@gmail.com";
+    }
+    return saved;
+  });
   const [pdfReportTitle, setPdfReportTitle] = useState(() => localStorage.getItem('pdf_report_title') || "BẢNG TỔNG HỢP CÔNG & PHÉP NHÂN SỰ");
   const [pdfDocumentCode, setPdfDocumentCode] = useState(() => localStorage.getItem('pdf_document_code') || "QT-NS-09");
   const [pdfSigner1, setPdfSigner1] = useState(() => localStorage.getItem('pdf_signer1') || "Bộ phận Nhân sự");
@@ -167,10 +307,11 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
   const [pdfSigner3, setPdfSigner3] = useState(() => localStorage.getItem('pdf_signer3') || "Đại diện pháp luật");
   const [pdfLocation, setPdfLocation] = useState(() => localStorage.getItem('pdf_location') || "");
   const [pdfDateString, setPdfDateString] = useState(() => {
-    return localStorage.getItem('pdf_date_string') || (() => {
-      const today = new Date();
-      return `Hà Nội, ngày ${String(today.getDate()).padStart(2, '0')} tháng ${String(today.getMonth() + 1).padStart(2, '0')} năm ${today.getFullYear()}`;
-    })();
+    const today = new Date();
+    const day = String(today.getDate()).padStart(2, '0');
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const year = today.getFullYear();
+    return `ngày ${day} tháng ${month} năm ${year}`;
   });
 
   const handleUpdatePdfConfig = (key: string, value: string, setter: (val: string) => void) => {
@@ -357,6 +498,7 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
           }
         } else if (detail.status === 'Nghỉ phép') {
           leaveDays++;
+          presentDays++; // Approved leave is counted as workday ("vẫn tính công")
         } else if (detail.status === 'Ngày lễ') {
           holidayDays++;
         }
@@ -386,6 +528,8 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
     );
   }, [monthlyReports, searchTerm]);
 
+
+
   const getDetailedRestDaysString = useCallback((report: EmployeeMonthlyReport): string => {
     const leaveList: string[] = [];
     const absentList: string[] = [];
@@ -412,6 +556,172 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
     if (parts.length === 0) return "-";
     return parts.join(' | ');
   }, [daysInfo]);
+
+  const handleDownloadExcel = useCallback(async () => {
+    setIsDownloadingExcel(true);
+    try {
+      const ExcelJS = await import('exceljs');
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Báo Cáo Công Phép');
+
+      const companyHeader = pdfCompanyName || "CÔNG TY SẢN XUẤT PHÒNG VISUAL";
+      const addressHeader = pdfAddress || "Địa chỉ: 41 Hoa Đào Phường Cầu Kiệu";
+      const leaveTitle = `BÁO CÁO CHẤM CÔNG & PHÉP - THÁNG ${selectedMonth}/${selectedYear}`;
+
+      // 1. Add Company Name
+      const row1 = worksheet.addRow([companyHeader]);
+      row1.getCell(1).font = { name: 'Arial', size: 12, bold: true, color: { argb: '1E293B' } };
+
+      // 2. Add Address
+      const row2 = worksheet.addRow([addressHeader]);
+      row2.getCell(1).font = { name: 'Arial', size: 9, italic: true, color: { argb: '64748B' } };
+
+      // 3. Add Empty Row
+      worksheet.addRow([]);
+
+      // 4. Add Title Row (Merged cells across columns A to J)
+      worksheet.mergeCells('A4:J4');
+      const titleCell = worksheet.getCell('A4');
+      titleCell.value = leaveTitle;
+      titleCell.font = { name: 'Arial', size: 15, bold: true, color: { argb: '312E81' } }; // Indigo-900
+      titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+      worksheet.getRow(4).height = 36;
+
+      // 5. Add Empty Row
+      worksheet.addRow([]);
+
+      // 6. Add Headers Row manually
+      const headers = [
+        'STT',
+        'Nhân Viên',
+        'Chức Vụ',
+        'Đi Làm (Công)',
+        'Vắng Mặt (Ngày)',
+        'Nghỉ Có Phép (Ngày)',
+        'Chi Tiết Ngày Nghỉ',
+        'Tăng Ca OT (Giờ)',
+        'Chi Tiết Tăng Ca',
+        'Nghỉ Lễ (Ngày)'
+      ];
+      const headerRow = worksheet.addRow(headers);
+      headerRow.height = 28;
+
+      // Style the header cells
+      headerRow.eachCell((cell) => {
+        cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FFFFFF' } };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: '4F46E5' } // Indigo 600
+        };
+        cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+        cell.border = {
+          top: { style: 'medium', color: { argb: '312E81' } },
+          left: { style: 'thin', color: { argb: 'CBD5E1' } },
+          bottom: { style: 'medium', color: { argb: '312E81' } },
+          right: { style: 'thin', color: { argb: 'CBD5E1' } }
+        };
+      });
+
+      // Define Column widths
+      const colWidths = [8, 25, 20, 16, 16, 18, 32, 18, 45, 16];
+      colWidths.forEach((width, index) => {
+        worksheet.getColumn(index + 1).width = width;
+      });
+
+      // Add Data rows
+      filteredReports.forEach((report, idx) => {
+        const leaveDetailsStr = getDetailedRestDaysString(report);
+        const otDetailsStr = getOtDaysString(report, totalDaysInMonth, selectedYear, selectedMonth);
+        
+        const dataRow = worksheet.addRow([
+          idx + 1,
+          getDisplayNameFromList(report.employeeName, false, employees, true),
+          report.role,
+          report.presentDays,
+          report.absentDays,
+          report.leaveDays,
+          leaveDetailsStr || '-',
+          parseFloat(report.totalOtHours.toFixed(1)),
+          otDetailsStr || '-',
+          report.holidayDays
+        ]);
+        
+        dataRow.height = 24;
+        
+        const isEven = idx % 2 === 0;
+        const rowBgColor = isEven ? 'F8FAFC' : 'FFFFFF'; // Slate-50 vs White
+        
+        dataRow.eachCell((cell, colNumber) => {
+          cell.font = { name: 'Arial', size: 10, color: { argb: '334155' } };
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: rowBgColor }
+          };
+          cell.border = {
+            top: { style: 'thin', color: { argb: 'E2E8F0' } },
+            left: { style: 'thin', color: { argb: 'E2E8F0' } },
+            bottom: { style: 'thin', color: { argb: 'E2E8F0' } },
+            right: { style: 'thin', color: { argb: 'E2E8F0' } }
+          };
+          
+          if (colNumber === 1) {
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: '64748B' } };
+          } else if (colNumber === 2) {
+            cell.alignment = { horizontal: 'left', vertical: 'middle' };
+            cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: '1E293B' } };
+          } else if (colNumber === 3) {
+            cell.alignment = { horizontal: 'left', vertical: 'middle' };
+          } else if (colNumber === 4) {
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: '059669' } }; // Emerald 600
+          } else if (colNumber === 5) {
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            if (report.absentDays > 0) {
+              cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: 'DC2626' } }; // Rose 600
+            }
+          } else if (colNumber === 6) {
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            if (report.leaveDays > 0) {
+              cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: 'D97706' } }; // Amber 600
+            }
+          } else if (colNumber === 7) {
+            cell.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+          } else if (colNumber === 8) {
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            if (report.totalOtHours > 0) {
+              cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: '4F46E5' } }; // Indigo 600
+            }
+          } else if (colNumber === 9) {
+            cell.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+          } else if (colNumber === 10) {
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            if (report.holidayDays > 0) {
+              cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: 'DB2777' } }; // Pink 600
+            }
+          }
+        });
+      });
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `Bao_Cao_Cham_Cong_Thang_${selectedMonth}_${selectedYear}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Error exporting excel:', err);
+      alert('Có lỗi khi xuất file Excel. Vui lòng thử lại.');
+    } finally {
+      setIsDownloadingExcel(false);
+    }
+  }, [filteredReports, selectedMonth, selectedYear, totalDaysInMonth, getDetailedRestDaysString, getOtDaysString, pdfCompanyName, pdfAddress]);
 
   // Leave Entitlement and Balance calculation according to Labor Law (1 day per month)
   const leaveReports = useMemo(() => {
@@ -743,35 +1053,38 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
 
   return (
     <div className="space-y-8 animate-fadeIn">
-      {/* Accountant role back to login banner */}
+      {/* Accountant role banner */}
       {role === 'accountant' && (
-        <div className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/15 border border-amber-100/50 dark:border-amber-900/30 rounded-[24px] p-5.5 shadow-sm animate-fadeIn">
-          <div className="space-y-1">
-            <h4 className="font-sans font-bold text-sm text-amber-950 dark:text-amber-200 flex items-center gap-2">
-              <span className="p-1 bg-amber-100 dark:bg-amber-950/60 rounded-lg">👩‍💼</span>
-              Bộ phận Kế toán (Chỉ Xem & In PDF)
-            </h4>
-            <p className="text-xs text-amber-800/90 dark:text-amber-350 leading-relaxed">
-              Bạn đang ở chế độ xem báo cáo tổng hợp công & phép của toàn thể nhân sự. Bạn có thể xuất bản bảng tổng hợp thành file PDF hoặc in trực tiếp.
-            </p>
+        <motion.div
+          initial={{ opacity: 0, y: -12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, ease: "easeOut" }}
+          className="bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/5 dark:from-amber-950/40 dark:via-orange-950/30 dark:to-slate-900/40 border border-amber-500/20 dark:border-amber-700/30 rounded-[28px] p-4 sm:p-5 shadow-sm backdrop-blur-md flex items-center justify-between gap-2 sm:p-3 sm:gap-4"
+        >
+          <div className="flex items-center gap-3.5">
+            <div className="p-2 sm:p-3 bg-amber-500/15 text-amber-600 dark:text-amber-400 rounded-2xl shrink-0">
+              <Coins className="w-6 h-6" />
+            </div>
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h4 className="font-sans font-bold text-sm text-slate-900 dark:text-amber-100">
+                  Bộ phận Kế toán & Quản lý Nhân sự
+                </h4>
+                <span className="px-2.5 py-0.5 text-[10px] bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded-full font-extrabold uppercase tracking-wider">
+                  Chế độ Xem & Xuất Báo Cáo
+                </span>
+              </div>
+              <p className="text-xs text-slate-600 dark:text-amber-200/80 leading-relaxed">
+                Bạn đang ở trung tâm tổng hợp công, quỹ phép và giờ tăng ca OT. Chọn tháng/năm bên dưới để xuất file Excel hoặc xem bản in PDF/PNG.
+              </p>
+            </div>
           </div>
-          <button
-            onClick={() => {
-              localStorage.removeItem('user_role');
-              localStorage.removeItem('accountant_key');
-              window.location.href = window.location.origin + window.location.pathname;
-            }}
-            className="flex items-center gap-1.5 px-4.5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-full text-xs shadow-md transition-all active:scale-[0.98] cursor-pointer shrink-0"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-            Quay lại đăng nhập
-          </button>
-        </div>
+        </motion.div>
       )}
 
       {/* Share Link for Accountant */}
       {role === 'admin' && (
-        <div id="share-section" className="bg-gradient-to-r from-indigo-50/70 to-sky-50/70 dark:from-indigo-950/30 dark:to-slate-900/30 border border-indigo-100/60 dark:border-indigo-900/40 rounded-[28px] p-5.5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm animate-fadeIn">
+        <div id="share-section" className="bg-gradient-to-r from-indigo-50/70 to-sky-50/70 dark:from-indigo-950/30 dark:to-slate-900/30 border border-indigo-100/60 dark:border-indigo-900/40 rounded-[28px] p-4 sm:p-4 sm:p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-2 sm:p-3 sm:gap-4 shadow-sm animate-fadeIn">
           <div className="space-y-1">
             <h4 className="font-bold text-sm text-indigo-950 dark:text-indigo-200 flex items-center gap-2">
               <div className="p-1.5 bg-indigo-100 dark:bg-indigo-950 rounded-lg text-indigo-600 dark:text-indigo-400">
@@ -784,8 +1097,8 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
             </p>
           </div>
           <button
-            onClick={handleCopyShareLink}
-            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-500 hover:to-sky-500 text-white font-bold rounded-full text-xs shadow-md hover:shadow-lg hover:shadow-indigo-500/20 transition-all duration-300 active:scale-[0.98] cursor-pointer shrink-0"
+            onClick={(e) => { playConfirmSound(); handleCopyShareLink(); }}
+            className="flex items-center gap-2 px-4 sm:px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-500 hover:to-sky-500 text-white font-bold rounded-full text-xs shadow-md hover:shadow-lg hover:shadow-indigo-500/20 transition-all duration-300 active:scale-[0.98] cursor-pointer shrink-0"
           >
             {copiedLink ? (
               <>
@@ -804,7 +1117,7 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
 
       {/* Sync Google Sheets Monthly Tabs Notification */}
       {role === 'admin' && (
-        <div className="bg-emerald-50/50 dark:bg-emerald-950/15 border border-emerald-100/60 dark:border-emerald-900/30 rounded-[28px] p-5.5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm animate-fadeIn">
+        <div className="bg-emerald-50/50 dark:bg-emerald-950/15 border border-emerald-100/60 dark:border-emerald-900/30 rounded-[28px] p-4 sm:p-4 sm:p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-2 sm:p-3 sm:gap-4 shadow-sm animate-fadeIn">
           <div className="space-y-1">
             <h4 className="font-sans font-bold text-sm text-emerald-900 dark:text-emerald-300 flex items-center gap-2">
               <div className="p-1.5 bg-emerald-100 dark:bg-emerald-950/40 rounded-lg text-emerald-600 dark:text-emerald-400">
@@ -821,7 +1134,7 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
               const event = new CustomEvent('trigger-advanced-grid-sync');
               window.dispatchEvent(event);
             }}
-            className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-full text-xs shadow-md transition-all active:scale-[0.98] cursor-pointer shrink-0"
+            className="flex items-center gap-2 px-4 sm:px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-full text-xs shadow-md transition-all active:scale-[0.98] cursor-pointer shrink-0"
           >
             <FileSpreadsheet className="w-3.5 h-3.5 animate-pulse" />
             Đồng bộ từ các sheet tháng ngay
@@ -830,16 +1143,24 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
       )}
 
       {/* Configuration and Date Filter Row */}
-      <div className="bg-white dark:bg-slate-900 p-5 rounded-[28px] border border-slate-100 dark:border-slate-800/80 shadow-md flex flex-col sm:flex-row gap-5 justify-between items-start sm:items-center transition-colors duration-300">
-        <div className="flex flex-wrap gap-3 items-center">
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, delay: 0.05 }}
+        className="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-[28px] border border-slate-100 dark:border-slate-800/80 shadow-md flex flex-col sm:flex-row gap-2 sm:p-3 sm:gap-4 sm:p-5 justify-between items-start sm:items-center transition-colors duration-300"
+      >
+        <div className="flex flex-wrap gap-2 sm:p-3 items-center">
           <div className="p-1.5 bg-indigo-50 dark:bg-indigo-950/50 rounded-lg text-indigo-600 dark:text-indigo-400">
             <CalendarIcon className="w-4.5 h-4.5" />
           </div>
           <span className="text-sm font-bold text-slate-700 dark:text-slate-300 font-sans">Chọn Tháng Báo Cáo:</span>
           <select
             value={selectedMonth}
-            onChange={(e) => setSelectedMonth(Number(e.target.value))}
-            className="px-4 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-full focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 dark:text-white font-extrabold cursor-pointer hover:border-slate-400 dark:hover:border-slate-600 shadow-xs"
+            onChange={(e) => {
+              playTabSound();
+              setSelectedMonth(Number(e.target.value));
+            }}
+            className="px-4 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-full focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 dark:text-white font-extrabold cursor-pointer hover:border-slate-400 dark:hover:border-slate-600 shadow-xs transition-colors"
           >
             {Array.from({ length: 12 }, (_, i) => (
               <option key={i + 1} value={i + 1} className="bg-white text-slate-900 dark:bg-slate-800 dark:text-white">Tháng {i + 1}</option>
@@ -848,7 +1169,7 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
           <select
             value={selectedYear}
             onChange={(e) => setSelectedYear(Number(e.target.value))}
-            className="px-4 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-full focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 dark:text-white font-extrabold cursor-pointer hover:border-slate-400 dark:hover:border-slate-600 shadow-xs"
+            className="px-4 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-full focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 dark:text-white font-extrabold cursor-pointer hover:border-slate-400 dark:hover:border-slate-600 shadow-xs transition-colors"
           >
             {years.map(y => (
               <option key={y} value={y} className="bg-white text-slate-900 dark:bg-slate-800 dark:text-white">Năm {y}</option>
@@ -856,21 +1177,41 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
           </select>
         </div>
 
-        {/* PDF Export Button */}
-        <div className="flex gap-2.5 w-full sm:w-auto">
-          <button
-            onClick={() => setShowPdfPreview(true)}
-            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r from-rose-600 to-orange-500 hover:from-rose-500 hover:to-orange-400 text-white font-extrabold rounded-full text-xs shadow-md shadow-rose-100/50 hover:shadow-lg hover:shadow-rose-500/25 dark:shadow-none transition-all duration-300 active:scale-[0.98] cursor-pointer w-full sm:w-auto hover:scale-[1.02]"
+        {/* Export Buttons */}
+        <div className="flex flex-wrap gap-1.5 sm:p-2.5 w-full sm:w-auto">
+          <motion.button
+            whileHover={{ scale: 1.02, y: -1 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => {
+              playConfirmSound();
+              handleDownloadPng();
+            }}
+            disabled={isDownloadingPng}
+            className="flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-blue-500 hover:from-indigo-500 hover:to-blue-400 disabled:from-slate-400 disabled:to-slate-500 text-white font-extrabold rounded-full text-xs shadow-md shadow-indigo-100/50 hover:shadow-lg hover:shadow-indigo-500/25 dark:shadow-none transition-all cursor-pointer w-full sm:w-auto"
+          >
+            {isDownloadingPng ? (
+              <RefreshCw className="w-4 h-4 animate-spin" />
+            ) : (
+              <Download className="w-4 h-4" />
+            )}
+            <span>{isDownloadingPng ? "Đang tạo..." : "Tải Dạng PNG"}</span>
+          </motion.button>
+
+          <motion.button
+            whileHover={{ scale: 1.02, y: -1 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => { playConfirmSound(); setShowPdfPreview(true); }}
+            className="flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 bg-gradient-to-r from-rose-600 to-orange-500 hover:from-rose-500 hover:to-orange-400 text-white font-extrabold rounded-full text-xs shadow-md shadow-rose-100/50 hover:shadow-lg hover:shadow-rose-500/25 dark:shadow-none transition-all cursor-pointer w-full sm:w-auto"
           >
             <Printer className="w-4 h-4" />
-            <span>Xuất Báo Cáo PDF</span>
-          </button>
+            <span>Xem & Tải Báo Cáo (PDF/Excel)</span>
+          </motion.button>
         </div>
-      </div>
+      </motion.div>
 
       {/* KPI Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-[28px] p-5.5 shadow-sm flex items-center gap-4 transition-colors duration-300">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+        <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-[28px] p-4 sm:p-4 sm:p-6 shadow-sm flex items-center gap-2 sm:p-3 sm:gap-4 transition-colors duration-300">
           <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-950/50 rounded-2xl flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0">
             <Users className="w-6 h-6" />
           </div>
@@ -880,7 +1221,7 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
           </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-[28px] p-5.5 shadow-sm flex items-center gap-4 transition-colors duration-300">
+        <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-[28px] p-4 sm:p-4 sm:p-6 shadow-sm flex items-center gap-2 sm:p-3 sm:gap-4 transition-colors duration-300">
           <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-950/40 rounded-2xl flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
             <CheckCircle className="w-6 h-6" />
           </div>
@@ -895,7 +1236,7 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
           </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-[28px] p-5.5 shadow-sm flex items-center gap-4 transition-colors duration-300">
+        <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-[28px] p-4 sm:p-4 sm:p-6 shadow-sm flex items-center gap-2 sm:p-3 sm:gap-4 transition-colors duration-300">
           <div className="w-12 h-12 bg-amber-50 dark:bg-amber-950/40 rounded-2xl flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0">
             <Clock className="w-6 h-6" />
           </div>
@@ -905,7 +1246,7 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
           </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-[28px] p-5.5 shadow-sm flex items-center gap-4 transition-colors duration-300">
+        <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-[28px] p-4 sm:p-4 sm:p-6 shadow-sm flex items-center gap-2 sm:p-3 sm:gap-4 transition-colors duration-300">
           <div className="w-12 h-12 bg-rose-50 dark:bg-rose-950/40 rounded-2xl flex items-center justify-center text-rose-600 dark:text-rose-400 shrink-0">
             <AlertTriangle className="w-6 h-6" />
           </div>
@@ -1004,7 +1345,7 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
           {leaveCalcMode === 'standard' ? (
             <>
               {/* Law Introduction Panel */}
-              <div className="bg-gradient-to-r from-amber-50/70 to-orange-50/70 dark:from-amber-950/20 dark:to-orange-950/15 border border-amber-100/60 dark:border-amber-900/30 rounded-3xl p-5.5 shadow-sm">
+              <div className="bg-gradient-to-r from-amber-50/70 to-orange-50/70 dark:from-amber-950/20 dark:to-orange-950/15 border border-amber-100/60 dark:border-amber-900/30 rounded-3xl p-4 sm:p-4 sm:p-6 shadow-sm">
             <h4 className="font-sans font-extrabold text-sm text-amber-950 dark:text-amber-200 flex items-center gap-2 mb-2">
               <span className="p-1 bg-amber-100 dark:bg-amber-950 rounded-lg">⚖️</span>
               Bộ Luật Lao Động: Quy định về Nghỉ phép hằng năm
@@ -1016,11 +1357,17 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
               <p>
                 Công thức tự động thâm niên tích lũy phép năm {selectedYear} (tính đến hết Tháng {selectedMonth}): <code className="font-mono bg-amber-100/50 dark:bg-amber-950/60 px-1.5 py-0.5 rounded font-bold text-amber-950 dark:text-amber-300">Số ngày phép được hưởng = Số tháng làm việc trong năm {selectedYear}</code>
               </p>
+              <div className="mt-3 pt-3 border-t border-amber-200/40 dark:border-amber-900/40 bg-amber-100/25 dark:bg-amber-950/30 p-2 sm:p-3 rounded-xl flex items-start gap-2 text-amber-900 dark:text-amber-300">
+                <span className="text-base">💡</span>
+                <div>
+                  <b className="font-bold">Cách thêm/bớt phép trực quan:</b> Nếu bạn muốn <b>cho thêm ngày nghỉ phép</b> hoặc <b>xóa bớt ngày nghỉ phép</b> của một nhân viên, bạn chỉ cần vào tab <b>Hồ sơ nhân viên 👥</b>, chọn nút <b>Chỉnh sửa ✏️</b> rồi điền số ngày mong muốn ở phần <i>Điều chỉnh ngày phép (+ hoặc -)</i>. Hệ thống sẽ tự động cộng/trừ vào quỹ phép của họ ngay lập tức!
+                </div>
+              </div>
             </div>
           </div>
 
           {/* Leave reports Table & Detail list */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-[32px] shadow-md overflow-hidden transition-colors duration-300">
+          <div className="bg-white dark:bg-slate-900 border border-slate-150/80 dark:border-slate-800/80 rounded-[24px] shadow-[4px_4px_0px_0px_rgba(15,23,42,0.06)] dark:shadow-[4px_4px_0px_0px_rgba(255,255,255,0.03)] overflow-hidden transition-colors duration-300">
             <div className="p-6 border-b border-slate-150 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-950/40">
               <h3 className="font-sans font-bold text-base text-slate-850 dark:text-slate-100 flex items-center gap-2">
                 <div className="p-1.5 bg-amber-50 dark:bg-amber-950/50 rounded-lg text-amber-600 dark:text-amber-400">
@@ -1034,8 +1381,8 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
               {!isTableLoaded ? (
                 <div className="p-6 space-y-4">
                   {[1, 2].map((idx) => (
-                    <div key={idx} className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 py-4 border-b border-slate-100 dark:border-slate-800/40 last:border-0 animate-pulse">
-                      <div className="flex items-center gap-3 w-full sm:w-1/3">
+                    <div key={idx} className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:p-3 sm:gap-4 py-4 border-b border-slate-100 dark:border-slate-800/40 last:border-0 animate-pulse">
+                      <div className="flex items-center gap-2 sm:p-3 w-full sm:w-1/3">
                         <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-850" />
                         <div className="space-y-2 flex-1">
                           <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-2/3" />
@@ -1057,8 +1404,8 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
                   <div key={report.employee.name} className="transition-colors hover:bg-slate-50/30 dark:hover:bg-slate-850/10">
                     {/* Header trigger */}
                     <div
-                      onClick={() => setExpandedEmployeeName(isExpanded ? null : `leave-${report.employee.name}`)}
-                      className="p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 cursor-pointer"
+                      onClick={() => { playTabSound(); setExpandedEmployeeName(isExpanded ? null : `leave-${report.employee.name}`); }}
+                      className="p-4 sm:p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-2 sm:p-3 sm:gap-4 cursor-pointer"
                     >
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-amber-50 dark:bg-amber-950/60 border border-amber-100 dark:border-amber-900/40 flex items-center justify-center font-bold text-amber-700 dark:text-amber-400 text-sm">
@@ -1072,7 +1419,7 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap gap-2.5 items-center text-xs font-bold">
+                      <div className="flex flex-wrap gap-1.5 sm:p-2.5 items-center text-xs font-bold">
                         <div className="bg-slate-50 dark:bg-slate-950/40 text-slate-650 dark:text-slate-350 px-3.5 py-1.5 rounded-2xl border border-slate-100/30 flex flex-col items-center min-w-22">
                           <span className="text-[9px] text-slate-400 dark:text-slate-500 uppercase">Được hưởng (A)</span>
                           <span className="text-sm font-extrabold text-indigo-600 dark:text-indigo-400">{report.leaveEntitlement} ngày</span>
@@ -1102,10 +1449,10 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
 
                     {/* Expanded details (Leave logs for this employee YTD) */}
                     {isExpanded && (
-                      <div className="px-5 pb-6 pt-2 bg-slate-50/40 dark:bg-slate-950/20 border-t border-slate-100 dark:border-slate-800 space-y-4 animate-fadeIn">
+                      <div className="px-4 sm:px-5 pb-6 pt-2 bg-slate-50/40 dark:bg-slate-950/20 border-t border-slate-100 dark:border-slate-800 space-y-4 animate-fadeIn">
                         <div className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed bg-slate-100/40 dark:bg-slate-900/60 p-4 rounded-2xl border border-slate-200/40 dark:border-slate-800 space-y-2">
                           <span className="font-bold text-slate-700 dark:text-slate-300 block">⚖️ Chi tiết tính toán & Reset phép sau Tết Nguyên Đán {selectedYear}:</span>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px] font-mono bg-slate-50/50 dark:bg-slate-950/20 p-3 rounded-xl border border-slate-100 dark:border-slate-850">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:p-3 text-[11px] font-mono bg-slate-50/50 dark:bg-slate-950/20 p-2 sm:p-3 rounded-xl border border-slate-100 dark:border-slate-850">
                             <div>
                               <p>• Quỹ phép cơ bản {selectedYear}: <strong className="text-slate-800 dark:text-slate-200">{report.baseEntitlement} ngày</strong></p>
                               <p>• Phép gối đầu 2025 nhận: <strong className="text-slate-800 dark:text-slate-200">{report.initialCarryover} ngày</strong></p>
@@ -1136,7 +1483,7 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
                               </div>
                             ) : (
                               report.ytdLeaveLogs.map((log, index) => (
-                                <div key={index} className="p-3 text-xs flex justify-between items-center hover:bg-slate-50 dark:hover:bg-slate-850/40 transition-colors">
+                                <div key={index} className="p-2 sm:p-3 text-xs flex justify-between items-center hover:bg-slate-50 dark:hover:bg-slate-850/40 transition-colors">
                                   <div className="flex items-center gap-2">
                                     <span className="font-mono bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded text-[11px] font-bold">
                                       {log.date}
@@ -1165,7 +1512,7 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
           ) : (
             <>
               {/* Accountant Chat Simulation Panel */}
-              <div className="bg-slate-950 text-slate-100 rounded-3xl p-5.5 shadow-xl border border-slate-800 space-y-4 font-sans max-w-4xl mx-auto overflow-hidden">
+              <div className="bg-slate-950 text-slate-100 rounded-3xl p-4 sm:p-4 sm:p-6 shadow-xl border border-slate-800 space-y-4 font-sans max-w-4xl mx-auto overflow-hidden">
                 <div className="flex items-center justify-between pb-3 border-b border-slate-800">
                   <div className="flex items-center gap-2">
                     <div className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse" />
@@ -1225,8 +1572,8 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
               </div>
 
               {/* Accountant Leave Ledger Card */}
-              <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-[32px] shadow-md overflow-hidden transition-colors duration-300">
-                <div className="p-6 border-b border-slate-150 dark:border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-amber-500/5 dark:bg-amber-950/10">
+              <div className="bg-white dark:bg-slate-900 border border-slate-150/80 dark:border-slate-800/80 rounded-[24px] shadow-[4px_4px_0px_0px_rgba(15,23,42,0.06)] dark:shadow-[4px_4px_0px_0px_rgba(255,255,255,0.03)] overflow-hidden transition-colors duration-300">
+                <div className="p-6 border-b border-slate-150 dark:border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:p-3 sm:gap-4 bg-amber-500/5 dark:bg-amber-950/10">
                   <div>
                     <h3 className="font-sans font-bold text-base text-slate-850 dark:text-slate-100 flex items-center gap-2">
                       <div className="p-1.5 bg-amber-50 dark:bg-amber-950/50 rounded-lg text-amber-600 dark:text-amber-400">
@@ -1247,8 +1594,8 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
                   {!isTableLoaded ? (
                     <div className="p-6 space-y-4">
                       {[1, 2].map((idx) => (
-                        <div key={idx} className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 py-4 border-b border-slate-100 dark:border-slate-800/40 last:border-0 animate-pulse">
-                          <div className="flex items-center gap-3 w-full sm:w-1/3">
+                        <div key={idx} className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:p-3 sm:gap-4 py-4 border-b border-slate-100 dark:border-slate-800/40 last:border-0 animate-pulse">
+                          <div className="flex items-center gap-2 sm:p-3 w-full sm:w-1/3">
                             <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-850" />
                             <div className="space-y-2 flex-1">
                               <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-2/3" />
@@ -1272,8 +1619,8 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
                       <div key={report.key} className="transition-colors hover:bg-slate-50/30 dark:hover:bg-slate-850/10">
                         {/* Header block */}
                         <div
-                          onClick={() => setExpandedEmployeeName(isExpanded ? null : `accountant-leave-${report.key}`)}
-                          className="p-5 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 cursor-pointer"
+                          onClick={() => { playTabSound(); setExpandedEmployeeName(isExpanded ? null : `accountant-leave-${report.key}`); }}
+                          className="p-4 sm:p-5 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-2 sm:p-3 sm:gap-4 cursor-pointer"
                         >
                           <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-full bg-amber-50 dark:bg-amber-950/60 border border-amber-100/60 dark:border-amber-900/40 flex items-center justify-center font-bold text-amber-700 dark:text-amber-400 text-sm">
@@ -1302,7 +1649,7 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
                             </div>
                           </div>
 
-                          <div className="flex flex-wrap gap-2.5 items-center text-xs font-bold">
+                          <div className="flex flex-wrap gap-1.5 sm:p-2.5 items-center text-xs font-bold">
                             <div className="bg-slate-50 dark:bg-slate-950/40 text-slate-600 dark:text-slate-450 px-3.5 py-1.5 rounded-2xl border border-slate-100/30 flex flex-col items-center min-w-22">
                               <span className="text-[8px] text-slate-400 dark:text-slate-550 uppercase">Cấp theo chốt</span>
                               <span className="text-sm font-extrabold text-indigo-600 dark:text-indigo-400">{report.totalEntitled} ngày</span>
@@ -1352,12 +1699,12 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
 
                         {/* Expandable info details */}
                         {isExpanded && (
-                          <div className="px-5 pb-6 pt-2 bg-slate-50/40 dark:bg-slate-950/20 border-t border-slate-100 dark:border-slate-800 space-y-4 animate-fadeIn">
+                          <div className="px-4 sm:px-5 pb-6 pt-2 bg-slate-50/40 dark:bg-slate-950/20 border-t border-slate-100 dark:border-slate-800 space-y-4 animate-fadeIn">
                             {/* Explanations */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:p-3 sm:gap-4">
                               <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/80 rounded-2xl shadow-sm space-y-2">
                                 <span className="text-[10px] font-bold text-amber-500 uppercase tracking-wider block">💬 Đoạn chốt của Kế toán</span>
-                                <p className="text-xs italic text-slate-600 dark:text-slate-300 leading-relaxed font-mono bg-slate-50 dark:bg-slate-950 p-3 rounded-xl border border-slate-100 dark:border-slate-850">
+                                <p className="text-xs italic text-slate-600 dark:text-slate-300 leading-relaxed font-mono bg-slate-50 dark:bg-slate-950 p-2 sm:p-3 rounded-xl border border-slate-100 dark:border-slate-850">
                                   "{report.chatQuote}"
                                 </p>
                               </div>
@@ -1386,7 +1733,7 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
                                   </div>
                                 ) : (
                                   report.systemLeaveLogs.map((log, idx) => (
-                                    <div key={idx} className="p-3 text-xs flex justify-between items-center hover:bg-slate-50 dark:hover:bg-slate-850/40 transition-colors">
+                                    <div key={idx} className="p-2 sm:p-3 text-xs flex justify-between items-center hover:bg-slate-50 dark:hover:bg-slate-850/40 transition-colors">
                                       <div className="flex items-center gap-2">
                                         <span className="font-mono bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded text-[11px] font-bold">
                                           {log.date}
@@ -1423,9 +1770,9 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -16, scale: 0.985 }}
             transition={{ ease: [0.3, 0, 0.2, 1], duration: 0.4 }}
-            className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-[32px] p-6 shadow-md transition-colors duration-300 space-y-6"
+            className="bg-white dark:bg-slate-900 border border-slate-150/80 dark:border-slate-800/80 rounded-[24px] p-6 shadow-[4px_4px_0px_0px_rgba(15,23,42,0.06)] dark:shadow-[4px_4px_0px_0px_rgba(255,255,255,0.03)] transition-colors duration-300 space-y-6"
           >
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-150 dark:border-slate-800 pb-5">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:p-3 sm:gap-4 border-b border-slate-150 dark:border-slate-800 pb-5">
             <div>
               <h3 className="font-sans font-bold text-base text-slate-850 dark:text-slate-100 flex items-center gap-2">
                 <div className="p-1.5 bg-indigo-50 dark:bg-indigo-950/50 rounded-lg text-indigo-600 dark:text-indigo-400">
@@ -1451,28 +1798,34 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
             </div>
           </div>
 
-          <div className="overflow-x-auto max-h-[500px] overflow-y-auto custom-scrollbar rounded-2xl border border-slate-150 dark:border-slate-800/60 shadow-inner relative">
-            <table className="w-full text-left border-collapse text-xs">
+
+
+          <div onTouchStart={(e) => e.stopPropagation()} onTouchMove={(e) => e.stopPropagation()} onTouchEnd={(e) => e.stopPropagation()} className="overflow-x-auto max-h-[550px] overflow-y-auto custom-scrollbar rounded-2xl border border-slate-150 dark:border-slate-800/60 shadow-inner relative">
+            <table className="no-swipe hidden md:table w-full text-left border-collapse text-xs">
               <thead className="sticky top-0 z-10">
-                <tr className="bg-slate-50/95 dark:bg-slate-950/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 font-extrabold text-slate-700 dark:text-slate-300 uppercase text-[10px] tracking-wider">
-                  <th className="p-4 text-center w-12 bg-slate-50/95 dark:bg-slate-950/95 backdrop-blur-md sticky top-0">STT</th>
-                  <th className="p-4 bg-slate-50/95 dark:bg-slate-950/95 backdrop-blur-md sticky top-0">Nhân Viên</th>
-                  <th className="p-4 text-center w-24 bg-slate-50/95 dark:bg-slate-950/95 backdrop-blur-md sticky top-0">Đi Làm (Công)</th>
-                  <th className="p-4 text-center w-24 bg-slate-50/95 dark:bg-slate-950/95 backdrop-blur-md sticky top-0">Vắng Mặt</th>
-                  <th className="p-4 text-center w-24 bg-slate-50/95 dark:bg-slate-950/95 backdrop-blur-md sticky top-0">Nghỉ Có Phép</th>
-                  <th className="p-4 min-w-[150px] bg-slate-50/95 dark:bg-slate-950/95 backdrop-blur-md sticky top-0">Chi Tiết Ngày Nghỉ</th>
-                  <th className="p-4 text-center w-28 bg-slate-50/95 dark:bg-slate-950/95 backdrop-blur-md sticky top-0">Tăng Ca OT (Giờ)</th>
-                  <th className="p-4 min-w-[220px] bg-slate-50/95 dark:bg-slate-950/95 backdrop-blur-md sticky top-0">Chi Tiết Tăng Ca (OT)</th>
-                  <th className="p-4 text-center w-20 bg-slate-50/95 dark:bg-slate-950/95 backdrop-blur-md sticky top-0">Nghỉ Lễ</th>
+                <tr className="no-swipe bg-slate-50/95 dark:bg-slate-950/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 font-extrabold text-slate-700 dark:text-slate-300 uppercase text-[10px] tracking-wider">
+                  <th className="p-2 sm:p-3 text-center w-10 bg-slate-50/95 dark:bg-slate-950/95 backdrop-blur-md sticky top-0">STT</th>
+                  <th className="p-2 sm:p-3 bg-slate-50/95 dark:bg-slate-950/95 backdrop-blur-md sticky top-0">Nhân Viên</th>
+                  <th className="p-2 sm:p-3 text-center whitespace-nowrap bg-slate-50/95 dark:bg-slate-950/95 backdrop-blur-md sticky top-0">Đi Làm (Công)</th>
+                  <th className="p-2 sm:p-3 text-center whitespace-nowrap bg-slate-50/95 dark:bg-slate-950/95 backdrop-blur-md sticky top-0">Vắng Mặt</th>
+                  <th className="p-2 sm:p-3 text-center whitespace-nowrap bg-slate-50/95 dark:bg-slate-950/95 backdrop-blur-md sticky top-0">Nghỉ Có Phép</th>
+                  <th className="p-2 sm:p-3 bg-slate-50/95 dark:bg-slate-950/95 backdrop-blur-md sticky top-0">Chi Tiết Ngày Nghỉ</th>
+                  <th className="p-2 sm:p-3 text-center whitespace-nowrap bg-slate-50/95 dark:bg-slate-950/95 backdrop-blur-md sticky top-0">Tăng Ca OT (Giờ)</th>
+                  <th className="p-2 sm:p-3 bg-slate-50/95 dark:bg-slate-950/95 backdrop-blur-md sticky top-0">Chi Tiết Tăng Ca (OT)</th>
+                  <th className="p-2 sm:p-3 text-center whitespace-nowrap bg-slate-50/95 dark:bg-slate-950/95 backdrop-blur-md sticky top-0">Nghỉ Lễ</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
-                {!isTableLoaded ? (
+                {!isTableLoaded || isLoading ? (
                   <tr>
                     <td colSpan={9} className="p-8 text-center text-slate-400">
-                      <div className="flex flex-col items-center justify-center space-y-2">
-                        <RefreshCw className="w-6 h-6 animate-spin text-indigo-500" />
-                        <span className="text-xs font-medium">Đang tổng hợp dữ liệu...</span>
+                      <div className="flex flex-col items-center justify-center space-y-2 min-h-[250px]">
+                        <RandomLoader 
+                          message="Đang tổng hợp dữ liệu báo cáo..." 
+                          autoCycle={true}
+                          cycleIntervalMs={2000}
+                          themeColor="text-indigo-600 dark:text-indigo-400"
+                        />
                       </div>
                     </td>
                   </tr>
@@ -1491,33 +1844,33 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
                     return (
                       <tr 
                         key={report.employeeName} 
-                        className="hover:bg-slate-50/50 dark:hover:bg-slate-850/20 transition-colors border-b border-slate-100 dark:border-slate-800/40 last:border-0"
+                        className="no-swipe group hover:bg-indigo-50/80 dark:hover:bg-indigo-950/40 hover:shadow-md transition-all duration-150 border-b border-slate-100 dark:border-slate-800/40 last:border-0 font-semibold cursor-pointer relative"
                       >
-                        <td className="p-4 text-center font-bold text-slate-400 dark:text-slate-500 font-mono">{idx + 1}</td>
-                        <td className="p-4 font-extrabold text-slate-900 dark:text-slate-100 text-sm">{report.employeeName}</td>
-                        <td className="p-4 text-center font-black text-slate-900 dark:text-slate-100 text-sm">
+                        <td className="p-2 sm:p-3 text-center font-bold text-slate-400 dark:text-slate-500 font-mono">{idx + 1}</td>
+                        <td className="p-2 sm:p-3 font-extrabold text-slate-900 dark:text-slate-100 text-xs whitespace-nowrap">{getDisplayNameFromList(report.employeeName, isAdmin, employees)}</td>
+                        <td className="p-2 sm:p-3 text-center font-black text-slate-900 dark:text-slate-100 text-xs">
                           {report.presentDays} <span className="text-[10px] text-slate-400 font-normal">công</span>
                         </td>
-                        <td className="p-4 text-center text-rose-600 font-semibold">
+                        <td className="p-2 sm:p-3 text-center text-rose-600 font-semibold text-xs">
                           {report.absentDays} <span className="text-[10px] text-slate-400 font-normal">ngày</span>
                         </td>
-                        <td className="p-4 text-center font-bold text-amber-600 dark:text-amber-400">
+                        <td className="p-2 sm:p-3 text-center font-bold text-amber-600 dark:text-amber-400 text-xs">
                           {report.leaveDays} <span className="text-[10px] text-slate-400 font-normal">ngày</span>
                         </td>
-                        <td className="p-4 text-left">
-                          <span className="text-slate-700 dark:text-slate-300 font-medium text-[11px] leading-relaxed block whitespace-normal break-words max-w-[220px]">
+                        <td className="p-2 sm:p-3 text-left">
+                          <span className="text-slate-700 dark:text-slate-300 font-medium text-[11px] leading-snug block whitespace-normal break-words max-w-[200px]">
                             {restDetailsStr}
                           </span>
                         </td>
-                        <td className="p-4 text-center text-violet-600 dark:text-violet-400 font-bold text-sm">
+                        <td className="p-2 sm:p-3 text-center text-violet-600 dark:text-violet-400 font-bold text-xs">
                           {report.totalOtHours.toFixed(1)}h
                         </td>
-                        <td className="p-4 text-left">
-                          <span className="text-purple-800 dark:text-purple-300 font-semibold text-[11px] leading-relaxed block whitespace-normal break-words max-w-[280px]">
+                        <td className="p-2 sm:p-3 text-left">
+                          <span className="text-purple-800 dark:text-purple-300 font-semibold text-[11px] leading-snug block whitespace-normal break-words max-w-[240px]">
                             {otDetailsStr}
                           </span>
                         </td>
-                        <td className="p-4 text-center text-pink-600 dark:text-pink-400 font-semibold">
+                        <td className="p-2 sm:p-3 text-center text-pink-600 dark:text-pink-400 font-semibold text-xs">
                           {report.holidayDays} <span className="text-[10px] text-slate-400 font-normal">ngày</span>
                         </td>
                       </tr>
@@ -1526,6 +1879,88 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
                 )}
               </tbody>
             </table>
+            <div className="md:hidden flex flex-col gap-3 p-2">
+              {!isTableLoaded || isLoading ? (
+                <div className="p-8 text-center text-slate-400">
+                  <div className="flex flex-col items-center justify-center space-y-2 min-h-[250px]">
+                    <RandomLoader 
+                       message="Đang tổng hợp dữ liệu báo cáo..." 
+                       autoCycle={true}
+                      cycleIntervalMs={2000}
+                      themeColor="text-indigo-600 dark:text-indigo-400"
+                    />
+                  </div>
+                </div>
+              ) : filteredReports.length === 0 ? (
+                <div className="p-8 text-center text-slate-400 font-medium bg-white dark:bg-slate-900 rounded-xl shadow-sm">
+                  Không tìm thấy nhân viên phù hợp
+                </div>
+              ) : (
+                filteredReports.map((report, idx) => {
+                  const leaveDetailsStr = getLeaveDaysString(report, totalDaysInMonth);
+                  const restDetailsStr = getDetailedRestDaysString(report);
+                  const otDetailsStr = getOtDaysString(report, totalDaysInMonth, selectedYear, selectedMonth);
+                  const isExpanded = expandedEmployeeName === report.employeeName;
+                  
+                  return (
+                    <div key={report.employeeName} className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl p-4 shadow-sm flex flex-col gap-3">
+                      <div className="flex justify-between items-center cursor-pointer" onClick={() => setExpandedEmployeeName(expandedEmployeeName === report.employeeName ? null : report.employeeName)}>
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-indigo-50 dark:bg-indigo-950/60 flex items-center justify-center font-bold text-indigo-700 dark:text-indigo-400 text-xs border border-indigo-100/60 dark:border-indigo-900/40 shrink-0">
+                            {idx + 1}
+                          </div>
+                          <div>
+                            <h4 className="font-extrabold text-slate-900 dark:text-slate-100 text-sm">
+                              {getDisplayNameFromList(report.employeeName, isAdmin, employees)}
+                            </h4>
+                            <div className="flex items-center gap-3 mt-1 text-[11px] font-bold">
+                              <span className="text-slate-700 dark:text-slate-300">Công: <span className="text-slate-900 dark:text-white font-black">{report.presentDays}</span></span>
+                              <span className="text-rose-600">Vắng: {report.absentDays}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <button className="p-2 bg-slate-50 dark:bg-slate-800 rounded-full text-slate-400">
+                          <svg className={`w-4 h-4 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                        </button>
+                      </div>
+                      
+                      {isExpanded && (
+                        <div className="pt-3 border-t border-slate-100 dark:border-slate-800/80 mt-1 flex flex-col gap-3 text-xs">
+                          <div className="flex justify-between items-center">
+                            <span className="text-slate-500 font-medium">Nghỉ có phép</span>
+                            <span className="font-bold text-amber-600 dark:text-amber-400">{report.leaveDays} ngày</span>
+                          </div>
+                          
+                          {restDetailsStr && (
+                            <div className="bg-slate-50 dark:bg-slate-950/50 p-2.5 rounded-lg border border-slate-100 dark:border-slate-800/50">
+                              <span className="text-slate-500 font-medium block mb-1">Chi tiết ngày nghỉ:</span>
+                              <span className="text-slate-700 dark:text-slate-300 font-medium text-[11px] leading-snug">{restDetailsStr}</span>
+                            </div>
+                          )}
+                          
+                          <div className="flex justify-between items-center">
+                            <span className="text-slate-500 font-medium">Tăng ca (OT)</span>
+                            <span className="font-bold text-violet-600 dark:text-violet-400">{report.totalOtHours.toFixed(1)} giờ</span>
+                          </div>
+                          
+                          {otDetailsStr && (
+                            <div className="bg-violet-50/50 dark:bg-violet-950/20 p-2.5 rounded-lg border border-violet-100/50 dark:border-violet-900/30">
+                              <span className="text-slate-500 font-medium block mb-1">Chi tiết OT:</span>
+                              <span className="text-purple-800 dark:text-purple-300 font-medium text-[11px] leading-snug">{otDetailsStr}</span>
+                            </div>
+                          )}
+                          
+                          <div className="flex justify-between items-center">
+                            <span className="text-slate-500 font-medium">Nghỉ Lễ</span>
+                            <span className="font-bold text-emerald-600 dark:text-emerald-400">{report.holidayDays} ngày</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
           </motion.div>
         )}
@@ -1538,7 +1973,7 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -16, scale: 0.985 }}
             transition={{ ease: [0.3, 0, 0.2, 1], duration: 0.4 }}
-            className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-[32px] shadow-md overflow-hidden transition-colors duration-300"
+            className="bg-white dark:bg-slate-900 border border-slate-150/80 dark:border-slate-800/80 rounded-[24px] shadow-[4px_4px_0px_0px_rgba(15,23,42,0.06)] dark:shadow-[4px_4px_0px_0px_rgba(255,255,255,0.03)] overflow-hidden transition-colors duration-300"
           >
           <div className="p-6 border-b border-slate-150 dark:border-slate-800/80 flex justify-between items-center bg-slate-50/50 dark:bg-slate-950/40">
             <h3 className="font-sans font-bold text-base text-slate-850 dark:text-slate-100 flex items-center gap-2">
@@ -1553,8 +1988,8 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
             {!isTableLoaded ? (
               <div className="p-6 space-y-4">
                 {[1, 2, 3].map((idx) => (
-                  <div key={idx} className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 py-4 border-b border-slate-100 dark:border-slate-800/40 last:border-0 animate-pulse">
-                    <div className="flex items-center gap-3 w-full sm:w-1/3">
+                  <div key={idx} className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:p-3 sm:gap-4 py-4 border-b border-slate-100 dark:border-slate-800/40 last:border-0 animate-pulse">
+                    <div className="flex items-center gap-2 sm:p-3 w-full sm:w-1/3">
                       <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-850" />
                       <div className="space-y-2 flex-1">
                         <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-2/3" />
@@ -1576,20 +2011,20 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
                 <div key={report.employeeName} className="transition-colors hover:bg-slate-50/30 dark:hover:bg-slate-850/10">
                   {/* Accordion Trigger Header */}
                   <div
-                    onClick={() => toggleExpand(report.employeeName)}
-                    className="p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 cursor-pointer"
+                    onClick={() => { playTabSound(); toggleExpand(report.employeeName); }}
+                    className="p-4 sm:p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:p-3 sm:gap-4 cursor-pointer"
                   >
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-full bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-100 dark:border-indigo-900/40 flex items-center justify-center font-bold text-indigo-700 dark:text-indigo-400 text-sm">
-                        {report.employeeName.charAt(0)}
+                        {getDisplayNameFromList(report.employeeName, isAdmin, employees).charAt(0)}
                       </div>
                       <div>
-                        <h4 className="font-bold text-slate-800 dark:text-slate-100 text-sm">{report.employeeName}</h4>
+                        <h4 className="font-bold text-slate-800 dark:text-slate-100 text-sm">{getDisplayNameFromList(report.employeeName, isAdmin, employees)}</h4>
                         <p className="text-xs text-slate-400 dark:text-slate-500">{report.role}</p>
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap gap-2 sm:gap-3 items-center text-[11px] sm:text-xs font-bold text-slate-600 dark:text-slate-350">
+                    <div className="flex flex-wrap gap-2 sm:gap-2 sm:p-3 items-center text-[11px] sm:text-xs font-bold text-slate-600 dark:text-slate-350">
                       <span className="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 px-2.5 py-1 rounded-full border border-emerald-100/30 dark:border-emerald-900/30">
                         Đi làm: {report.presentDays} ngày
                       </span>
@@ -1621,70 +2056,234 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
 
                   {/* Color-Coded Calendar Grid Expander */}
                   {isExpanded && (
-                    <div className="px-5 pb-6 pt-2 bg-slate-50/50 dark:bg-slate-950/20 border-t border-slate-100 dark:border-slate-800 space-y-4">
-                      {/* Color legends */}
-                      <div className="flex flex-wrap gap-4 text-xs font-bold text-slate-500 dark:text-slate-450 pt-2">
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-3.5 h-3.5 rounded-lg bg-emerald-500" />
-                          <span>Có đi làm</span>
+                    <div className="px-4 sm:px-5 pb-6 pt-2 bg-slate-50/50 dark:bg-slate-950/20 border-t border-slate-100 dark:border-slate-800 space-y-4">
+                      {/* Flex Header with legends and Toggle */}
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:p-3 pt-2 border-b border-slate-100/60 dark:border-slate-800/60 pb-3">
+                        {/* Color legends with elegant small status indicator dots */}
+                        <div className="flex flex-wrap gap-x-4 gap-y-2 text-[10px] font-medium text-slate-500 dark:text-slate-450">
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 ring-4 ring-emerald-500/10" />
+                            <span>Có đi làm</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-amber-500 ring-4 ring-amber-500/10" />
+                            <span>Nghỉ phép</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-pink-500 ring-4 ring-pink-500/10" />
+                            <span>Ngày lễ nhà nước</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-rose-500 ring-4 ring-rose-500/10" />
+                            <span>Không đi làm</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-slate-400 ring-4 ring-slate-400/10" />
+                            <span>Nghỉ cuối tuần</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full border border-dashed border-slate-400 dark:border-slate-600 bg-slate-50 dark:bg-slate-900" />
+                            <span>Chưa vào làm</span>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-3.5 h-3.5 rounded-lg bg-amber-500" />
-                          <span>Nghỉ phép</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-3.5 h-3.5 rounded-lg bg-pink-500" />
-                          <span>Ngày lễ nhà nước</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-3.5 h-3.5 rounded-lg bg-rose-500" />
-                          <span>Không đi làm</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-3.5 h-3.5 rounded-lg bg-slate-300 dark:bg-slate-700" />
-                          <span>Nghỉ cuối tuần</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-3.5 h-3.5 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/10 text-slate-350 dark:text-slate-650" />
-                          <span>Chưa vào làm</span>
+
+                        {/* View selector buttons */}
+                        <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-900 p-0.5 rounded-xl border border-slate-200/50 dark:border-slate-800/55 shrink-0 self-end sm:self-auto">
+                          <button
+                            onClick={() => { playTabSound(); setCalendarView('grid'); }}
+                            className={`px-2.5 py-1 text-[10px] font-black rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                              calendarView === 'grid'
+                                ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm border border-slate-200/20'
+                                : 'text-slate-400 dark:text-slate-500 hover:text-slate-600'
+                            }`}
+                            title="Xem dạng Lưới"
+                          >
+                            Lưới
+                          </button>
+                          <button
+                            onClick={() => { playTabSound(); setCalendarView('list'); }}
+                            className={`px-2.5 py-1 text-[10px] font-black rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                              calendarView === 'list'
+                                ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm border border-slate-200/20'
+                                : 'text-slate-400 dark:text-slate-500 hover:text-slate-600'
+                            }`}
+                            title="Xem dạng Danh sách"
+                          >
+                            Danh sách
+                          </button>
                         </div>
                       </div>
 
-                      {/* Grid rendering */}
-                      <div className="grid grid-cols-7 sm:grid-cols-10 md:grid-cols-15 lg:grid-cols-31 gap-2 pt-2">
-                        {Array.from({ length: totalDaysInMonth }, (_, i) => {
-                          const day = i + 1;
-                          const detail = report.dailyDetails[day];
-                          const dayOfWeek = new Date(selectedYear, selectedMonth - 1, day).getDay();
-                          const isWeekend = dayOfWeek === 0; // Sunday only
-
-                          let colorClass = 'bg-slate-200 dark:bg-slate-850 text-slate-500 dark:text-slate-400'; // Weekend default (Sunday)
-                          if (detail.status === 'Có đi làm') colorClass = 'bg-emerald-500 text-white';
-                          else if (detail.status === 'Nghỉ phép') colorClass = 'bg-amber-500 text-white';
-                          else if (detail.status === 'Ngày lễ') colorClass = 'bg-pink-500 text-white font-bold ring-2 ring-pink-200 dark:ring-pink-900/40';
-                          else if (detail.status === 'Không đi làm' && !isWeekend) colorClass = 'bg-rose-500 text-white';
-                          else if (detail.status === 'Không đi làm' && isWeekend) colorClass = 'bg-rose-500 text-white'; // If they log off on Sunday explicitly
-                          else if (detail.status === 'Chưa vào làm') colorClass = 'bg-slate-50/50 dark:bg-slate-900/10 text-slate-300 dark:text-slate-700 border border-dashed border-slate-200 dark:border-slate-850/80';
-
-                          const otStr = detail.otFrom && detail.otTo ? `OT: ${detail.otFrom}-${detail.otTo}` : '';
-                          const holidaySuffix = detail.holidayName ? ` (${detail.holidayName})` : '';
-
-                          return (
-                            <div
-                              key={day}
-                              title={`${day}/${selectedMonth} - ${detail.status}${holidaySuffix}\n${otStr}\n${detail.note}`}
-                              className={`aspect-square rounded-xl flex flex-col items-center justify-center cursor-pointer p-1 transition-all hover:scale-110 shadow-sm ${colorClass}`}
-                            >
-                              <span className="text-[10px] font-bold">{day}</span>
-                              {detail.otFrom && detail.otTo && (
-                                <span className="text-[7px] font-mono font-bold leading-none bg-indigo-900/30 dark:bg-black/30 px-1 py-0.5 rounded mt-0.5">
-                                  OT
-                                </span>
-                              )}
+                      {/* Content Area with Animation Support */}
+                      <AnimatePresence mode="wait">
+                        {calendarView === 'grid' ? (
+                          <motion.div
+                            key="grid-view"
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            transition={{ duration: 0.15 }}
+                            className="w-full pt-1"
+                          >
+                            {/* Days of week header */}
+                            <div className="grid grid-cols-7 gap-2 text-center text-[10px] font-bold text-slate-400 dark:text-slate-500 pb-2 border-b border-slate-100 dark:border-slate-800/40 mb-2">
+                              <span>T2</span>
+                              <span>T3</span>
+                              <span>T4</span>
+                              <span>T5</span>
+                              <span>T6</span>
+                              <span>T7</span>
+                              <span className="text-rose-500">CN</span>
                             </div>
-                          );
-                        })}
-                      </div>
+
+                            <div className="grid grid-cols-7 gap-1.5">
+                              {/* Empty spacer cells */}
+                              {Array.from({ length: (new Date(selectedYear, selectedMonth - 1, 1).getDay() === 0 ? 6 : new Date(selectedYear, selectedMonth - 1, 1).getDay() - 1) }).map((_, idx) => (
+                                <div 
+                                  key={`empty-${idx}`} 
+                                  className="aspect-square rounded-xl bg-slate-50/10 dark:bg-slate-900/5 border border-slate-100/20 dark:border-slate-800/10" 
+                                />
+                              ))}
+
+                              {/* Actual days */}
+                              {Array.from({ length: totalDaysInMonth }, (_, i) => {
+                                const day = i + 1;
+                                const detail = report.dailyDetails[day];
+                                const dayOfWeek = new Date(selectedYear, selectedMonth - 1, day).getDay();
+                                const isSunday = dayOfWeek === 0;
+
+                                let cellClass = '';
+                                let dotColor = '';
+
+                                if (detail.status === 'Có đi làm') {
+                                  cellClass = 'bg-emerald-500/8 dark:bg-emerald-500/12 text-emerald-600 dark:text-emerald-400 border border-emerald-500/15 dark:border-emerald-500/25 font-bold shadow-xs';
+                                  dotColor = 'bg-emerald-500';
+                                } else if (detail.status === 'Nghỉ phép') {
+                                  cellClass = 'bg-amber-500/8 dark:bg-amber-500/12 text-amber-600 dark:text-amber-400 border border-amber-500/15 dark:border-amber-500/25 font-bold shadow-xs';
+                                  dotColor = 'bg-amber-500';
+                                } else if (detail.status === 'Ngày lễ') {
+                                  cellClass = 'bg-pink-500/8 dark:bg-pink-500/12 text-pink-600 dark:text-pink-400 border border-pink-500/20 dark:border-pink-500/30 font-bold shadow-xs';
+                                  dotColor = 'bg-pink-500';
+                                } else if (detail.status === 'Không đi làm') {
+                                  cellClass = 'bg-rose-500/8 dark:bg-rose-500/12 text-rose-600 dark:text-rose-400 border border-rose-500/15 dark:border-rose-500/25 font-bold shadow-xs';
+                                  dotColor = 'bg-rose-500';
+                                } else if (detail.status === 'Chưa vào làm') {
+                                  cellClass = 'bg-slate-50/20 dark:bg-slate-900/5 text-slate-350 dark:text-slate-600 border border-dashed border-slate-150 dark:border-slate-800/40';
+                                } else {
+                                  cellClass = 'bg-slate-100/50 dark:bg-slate-850/40 text-slate-450 dark:text-slate-500 border border-slate-150/40 dark:border-slate-800/30';
+                                }
+
+                                const otStr = detail.otFrom && detail.otTo ? `OT: ${detail.otFrom}-${detail.otTo}` : '';
+                                const holidaySuffix = detail.holidayName ? ` (${detail.holidayName})` : '';
+
+                                return (
+                                  <div
+                                    key={day}
+                                    title={`${day}/${selectedMonth} - ${detail.status}${holidaySuffix}\n${otStr}\n${detail.note}`}
+                                    className={`aspect-square rounded-xl flex flex-col items-center justify-center cursor-pointer relative select-none transition-all duration-150 hover:scale-105 hover:ring-1.5 hover:ring-indigo-500/30 hover:border-indigo-500/40 p-1 ${cellClass}`}
+                                  >
+                                    <span className="text-xs font-semibold tracking-tight">{day}</span>
+                                    
+                                    {/* Elegant status dot */}
+                                    {dotColor && (
+                                      <span className={`w-1 h-1 rounded-full ${dotColor} mt-0.5`} />
+                                    )}
+
+                                    {/* OT Label */}
+                                    {detail.otFrom && detail.otTo && (
+                                      <span className="absolute top-0.5 right-0.5 text-[6.5px] font-extrabold px-0.5 py-0.2 rounded bg-purple-150 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 border border-purple-200/30">
+                                        OT
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </motion.div>
+                        ) : (
+                          /* Grid-based List View representing every day of the month beautifully and compactly */
+                          <motion.div
+                            key="list-view"
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            transition={{ duration: 0.15 }}
+                            className="w-full pt-1 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:p-3 max-h-[480px] overflow-y-auto pr-1.5 custom-scrollbar"
+                          >
+                            {Array.from({ length: totalDaysInMonth }, (_, i) => {
+                              const day = i + 1;
+                              const detail = report.dailyDetails[day];
+                              const dateObj = new Date(selectedYear, selectedMonth - 1, day);
+                              const weekdays = ["Chủ Nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"];
+                              const dayOfWeekStr = weekdays[dateObj.getDay()];
+                              const isSunday = dateObj.getDay() === 0;
+
+                              let badgeClass = '';
+                              if (detail.status === 'Có đi làm') {
+                                badgeClass = 'bg-emerald-100 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200/20';
+                              } else if (detail.status === 'Nghỉ phép') {
+                                badgeClass = 'bg-amber-100 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border border-amber-200/20';
+                              } else if (detail.status === 'Ngày lễ') {
+                                badgeClass = 'bg-pink-100 dark:bg-pink-950/30 text-pink-700 dark:text-pink-400 border border-pink-200/20';
+                              } else if (detail.status === 'Không đi làm') {
+                                badgeClass = 'bg-rose-100 dark:bg-rose-950/30 text-rose-700 dark:text-rose-400 border border-rose-200/20';
+                              } else if (detail.status === 'Chưa vào làm') {
+                                badgeClass = 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border border-dashed border-slate-200 dark:border-slate-700';
+                              } else {
+                                badgeClass = 'bg-slate-50 dark:bg-slate-850 text-slate-500 dark:text-slate-400 border border-slate-200/40';
+                              }
+
+                              return (
+                                <div 
+                                  key={day}
+                                  className="flex flex-col justify-between p-3.5 bg-slate-50/60 dark:bg-slate-900/40 hover:bg-slate-100/80 dark:hover:bg-slate-900/80 border border-slate-150/50 dark:border-slate-800/60 rounded-2xl transition-all duration-150 gap-1.5 sm:p-2.5 hover:scale-[1.02] hover:shadow-sm"
+                                >
+                                  {/* Day and Weekday Row */}
+                                  <div className="flex justify-between items-center pb-2 border-b border-slate-100/50 dark:border-slate-850/40">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-sm font-mono font-black text-indigo-600 dark:text-indigo-400">
+                                        {String(day).padStart(2, '0')}
+                                      </span>
+                                      <span className={`text-xs font-bold ${isSunday ? 'text-rose-500' : 'text-slate-600 dark:text-slate-350'}`}>
+                                        {dayOfWeekStr}
+                                      </span>
+                                    </div>
+                                    {detail.otFrom && detail.otTo && (
+                                      <span className="bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-400 font-extrabold px-1.5 py-0.5 rounded text-[9px] border border-purple-200/30">
+                                        OT
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {/* Status badge */}
+                                  <div className="flex items-center">
+                                    <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full ${badgeClass} truncate max-w-full`} title={detail.status}>
+                                      {detail.status}
+                                      {detail.holidayName ? ` (${detail.holidayName})` : ''}
+                                    </span>
+                                  </div>
+
+                                  {/* Extra details (OT or note) */}
+                                  {(detail.note || (detail.otFrom && detail.otTo)) && (
+                                    <div className="space-y-1.5 pt-1">
+                                      {detail.otFrom && detail.otTo && (
+                                        <div className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                                          ⏱️ Giờ OT: {detail.otFrom} - {detail.otTo}
+                                        </div>
+                                      )}
+                                      {detail.note && (
+                                        <div className="text-[10px] text-slate-400 dark:text-slate-500 italic truncate max-w-full" title={detail.note}>
+                                          " {detail.note} "
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
 
                       {/* Timeline History logs table */}
                       <div className="border border-slate-200/60 dark:border-slate-800 rounded-2xl overflow-hidden bg-white dark:bg-slate-900/40 mt-4 animate-fadeIn">
@@ -1699,8 +2298,8 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
                             </div>
                           ) : (
                             report.logs.map((log, index) => (
-                              <div key={index} className="p-3.5 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-850/40 transition-colors">
-                                <div className="flex flex-wrap gap-2.5 items-center">
+                              <div key={index} className="p-3.5 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:p-3 hover:bg-slate-50 dark:hover:bg-slate-850/40 transition-colors">
+                                <div className="flex flex-wrap gap-1.5 sm:p-2.5 items-center">
                                   <span className="font-mono bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-slate-600 dark:text-slate-300 font-bold">{log.date}</span>
                                   <span className={`font-bold px-2.5 py-0.5 rounded-full text-[10px] uppercase tracking-wide ${
                                     log.status === 'Có đi làm' ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-100/30' : log.status === 'Nghỉ phép' ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-100/30' : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-100/30'
@@ -1728,14 +2327,14 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
                                 {role === 'admin' && (
                                   <div className="flex items-center gap-1.5 shrink-0">
                                     <button
-                                      onClick={() => setEditingLog({ ...log })}
+                                      onClick={() => { playConfirmSound(); setEditingLog({ ...log }); }}
                                       className="p-1.5 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 rounded-lg transition-colors cursor-pointer"
                                       title="Sửa ngày công"
                                     >
                                       <Edit2 className="w-3.5 h-3.5" />
                                     </button>
                                     <button
-                                      onClick={() => handleDelete(log)}
+                                      onClick={() => { playConfirmSound(); handleDelete(log); }}
                                       disabled={isDeleting}
                                       className="p-1.5 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60 rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
                                       title="Xóa ngày công"
@@ -1761,10 +2360,22 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
       </AnimatePresence>
 
       {/* Pop-up Edit Modal */}
-      {editingLog && (
-        <div className="fixed inset-0 bg-slate-950/50 dark:bg-slate-950/85 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-white dark:bg-slate-900 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-2xl max-w-md w-full p-6 space-y-5 animate-scaleIn transition-colors duration-350">
-            <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-3.5">
+      <AnimatePresence>
+        {editingLog && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 no-swipe bg-slate-950/50 dark:bg-slate-950/85 backdrop-blur-xs z-50 flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 10 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              className="bg-white dark:bg-slate-900 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-2xl max-w-md w-full p-6 space-y-5 transition-colors duration-350"
+            >
+              <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-3.5">
               <div>
                 <h4 className="font-sans font-bold text-base text-slate-800 dark:text-slate-100">
                   Chỉnh Sửa Ngày Công
@@ -1772,7 +2383,7 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
                 <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{editingLog.employeeName}</p>
               </div>
               <button
-                onClick={() => setEditingLog(null)}
+                onClick={() => { playConfirmSound(); setEditingLog(null); }}
                 className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer text-sm font-bold"
               >
                 ✕
@@ -1831,16 +2442,16 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
                           setEditingLog({ ...editingLog, otFrom: '18:00', otTo: '21:00' });
                         } else {
                           setEditingLog({ ...editingLog, otFrom: '', otTo: '' });
+
                         }
                       }}
-                      className="sr-only peer"
                     />
                     <div className="w-9 h-5 bg-slate-200 dark:bg-slate-850 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600 dark:peer-checked:bg-indigo-500"></div>
                   </label>
                 </div>
 
                 {(editingLog.otFrom || editingLog.otTo) && (
-                  <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-100 dark:border-slate-800/60 animate-fadeIn font-mono">
+                  <div className="grid grid-cols-2 gap-2 sm:p-3 pt-3 border-t border-slate-100 dark:border-slate-800/60 animate-fadeIn font-mono">
                     <div>
                       <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1 font-sans">OT Từ</label>
                       <input
@@ -1874,59 +2485,127 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
                 />
               </div>
 
-              <div className="border-t border-slate-100 dark:border-slate-800/80 pt-4 flex justify-end gap-2.5">
+              <div className="border-t border-slate-100 dark:border-slate-800/80 pt-4 flex justify-end gap-1.5 sm:p-2.5">
                 <button
                   type="button"
-                  onClick={() => setEditingLog(null)}
-                  className="px-5 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-full text-xs font-bold transition-all cursor-pointer"
+                  onClick={() => { playConfirmSound(); setEditingLog(null); }}
+                  className="px-4 sm:px-5 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-full text-xs font-bold transition-all cursor-pointer"
                 >
                   Hủy
                 </button>
                 <button
                   type="submit"
                   disabled={isUpdating}
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 dark:bg-indigo-500 dark:hover:bg-indigo-400 text-white rounded-full text-xs font-bold shadow-md disabled:opacity-50 cursor-pointer"
+                  className="px-4 sm:px-5 py-2 bg-indigo-600 hover:bg-indigo-500 dark:bg-indigo-500 dark:hover:bg-indigo-400 text-white rounded-full text-xs font-bold shadow-md disabled:opacity-50 cursor-pointer"
                 >
                   {isUpdating ? "Đang đồng bộ..." : "Cập nhật dữ liệu"}
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
-      {/* Professional PDF Report Preview Modal */}
-      {showPdfPreview && (
-        <div className="fixed inset-0 bg-slate-900/60 dark:bg-black/80 backdrop-blur-xs z-50 overflow-y-auto p-4 md:p-8 flex items-start justify-center animate-fadeIn">
-          <div className="bg-slate-50 dark:bg-slate-950 w-full max-w-[1340px] rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800/80 overflow-hidden my-4">
+      {/* Professional Report Preview Modal */}
+      <AnimatePresence>
+        {showPdfPreview && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 no-swipe bg-slate-900/60 dark:bg-black/80 backdrop-blur-xs z-50 overflow-y-auto p-4 md:p-8 flex items-start justify-center print-preview-modal-overlay"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 12 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              className="bg-slate-50 dark:bg-slate-950 w-full max-w-[1340px] rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800/80 overflow-hidden my-4 print-preview-modal-card"
+            >
             
             {/* Header / Control Bar (no-print) */}
-            <div className="px-6 py-4 bg-white dark:bg-slate-900 border-b border-slate-150 dark:border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 no-print">
+            <div className="px-6 py-4 bg-white dark:bg-slate-900 border-b border-slate-150 dark:border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:p-3 sm:gap-4 no-print">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-rose-50 dark:bg-rose-950/50 rounded-xl text-rose-600 dark:text-rose-400">
                   <Printer className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-sans font-bold text-sm text-slate-800 dark:text-slate-100">Bản Xem Trước PDF Báo Cáo Chấm Công</h3>
+                  <h3 className="font-sans font-bold text-sm text-slate-800 dark:text-slate-100">Trung Tâm Xem Trước & Xuất Báo Cáo Chấm Công</h3>
                   <p className="text-[11px] text-slate-400 dark:text-slate-500">Tháng {selectedMonth}/{selectedYear} - Thiết kế cho kế toán lưu trữ</p>
                 </div>
               </div>
               
-              <div className="flex items-center gap-2.5 w-full sm:w-auto self-stretch sm:self-auto no-print">
-                <button
-                  onClick={() => setShowPdfPreview(false)}
-                  className="flex-1 sm:flex-none px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-full text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              <div className="flex flex-wrap items-center gap-1.5 sm:p-2.5 w-full sm:w-auto justify-end no-print">
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => {
+                    playConfirmSound();
+                    handleDownloadPng();
+                  }}
+                  disabled={isDownloadingPng}
+                  className="px-4.5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-400 text-white rounded-full text-xs font-extrabold shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  {isDownloadingPng ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Download className="w-3.5 h-3.5" />
+                  )}
+                  <span>{isDownloadingPng ? "Đang tạo ảnh..." : "Tải dạng PNG"}</span>
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => {
+                    playConfirmSound();
+                    handleDownloadExcel();
+                  }}
+                  disabled={isDownloadingExcel}
+                  className="px-4.5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-400 text-white rounded-full text-xs font-extrabold shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  {isDownloadingExcel ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                  )}
+                  <span>{isDownloadingExcel ? "Đang tạo Excel..." : "Tải dạng Excel"}</span>
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => {
+                    playConfirmSound();
+                    handleDownloadPdf();
+                  }}
+                  disabled={isDownloadingPdf}
+                  className="px-4.5 py-2 bg-rose-600 hover:bg-rose-500 disabled:bg-rose-400 text-white rounded-full text-xs font-extrabold shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  {isDownloadingPdf ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <FileText className="w-3.5 h-3.5" />
+                  )}
+                  <span>{isDownloadingPdf ? "Đang xuất PDF..." : "Tải dạng PDF"}</span>
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => { playConfirmSound(); window.print(); }}
+                  className="px-4.5 py-2 bg-slate-800 hover:bg-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 text-white rounded-full text-xs font-extrabold shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>In Báo Cáo</span>
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => { playConfirmSound(); setShowPdfPreview(false); }}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-full text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <X className="w-3.5 h-3.5" />
                   <span>Đóng</span>
-                </button>
-                <button
-                  onClick={() => window.print()}
-                  className="flex-1 sm:flex-none px-5 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-full text-xs font-extrabold shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>In / Lưu PDF</span>
-                </button>
+                </motion.button>
               </div>
             </div>
 
@@ -1941,7 +2620,7 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
             {/* Scrollable Printable container & side-editor */}
             <div className="flex flex-col lg:flex-row bg-slate-100 dark:bg-slate-900/40 divide-y lg:divide-y-0 lg:divide-x divide-slate-200 dark:divide-slate-850">
               {/* Left Column: Side-editor (no-print) */}
-              <div className="w-full lg:w-76 shrink-0 p-5.5 bg-white dark:bg-slate-950 no-print space-y-4">
+              <div className="w-full lg:w-76 shrink-0 p-4 sm:p-4 sm:p-6 bg-white dark:bg-slate-950 no-print space-y-4">
                 <div className="border-b border-slate-150 dark:border-slate-800 pb-3">
                   <h4 className="text-xs font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
                     <Sliders className="w-3.5 h-3.5 text-rose-500" />
@@ -2012,7 +2691,7 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
               {/* Right Column: Paper Representation */}
               <div className="flex-1 p-4 md:p-8 overflow-x-auto flex justify-center bg-slate-100 dark:bg-slate-900/40">
                 {/* Paper representation (styled bg-white for screen, and print-report-container class for media query print) */}
-                <div className="print-report-container w-full max-w-[297mm] min-h-[210mm] bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 p-8 sm:p-10 shadow-md rounded-lg font-sans border border-slate-200 dark:border-slate-800 transition-colors">
+                <div ref={reportRef} className="print-report-container w-full max-w-[297mm] min-h-[210mm] bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 p-8 sm:p-10 shadow-md rounded-lg font-sans border border-slate-200 dark:border-slate-800 transition-colors">
                   
                   {/* Letterhead */}
                   <div className="flex justify-between items-start border-b-2 border-slate-900 dark:border-slate-800 pb-4">
@@ -2042,7 +2721,7 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
                   </div>
 
                 {/* Report Metadata */}
-                <div className="grid grid-cols-2 gap-4 bg-slate-50 dark:bg-slate-900/40 p-4.5 rounded-xl text-xs text-slate-700 dark:text-slate-300 border border-slate-100 dark:border-slate-800 mb-6">
+                <div className="grid grid-cols-2 gap-2 sm:p-3 sm:gap-4 bg-slate-50 dark:bg-slate-900/40 p-4.5 rounded-xl text-xs text-slate-700 dark:text-slate-300 border border-slate-100 dark:border-slate-800 mb-6">
                   <div className="space-y-1.5">
                     <p><b className="text-slate-900 dark:text-slate-200">Bộ phận:</b> Phòng Visual (Visual Department)</p>
                     <p><b className="text-slate-900 dark:text-slate-200">Kỳ báo cáo:</b> Tháng {selectedMonth}/{selectedYear}</p>
@@ -2056,39 +2735,39 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
                 </div>
 
                 {/* KPIs summary */}
-                <div className="grid grid-cols-4 gap-3 text-center mb-8">
-                  <div className="border border-slate-200/80 dark:border-slate-800 rounded-xl p-3 bg-slate-50/50 dark:bg-slate-900/20">
+                <div className="grid grid-cols-4 gap-2 sm:p-3 text-center mb-8">
+                  <div className="border border-slate-200/80 dark:border-slate-800 rounded-xl p-2 sm:p-3 bg-slate-50/50 dark:bg-slate-900/20">
                     <span className="block text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Tổng công đi làm</span>
                     <span className="text-base font-extrabold text-slate-900 dark:text-white mt-1 block">{stats.totalPresent} <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400">công</span></span>
                   </div>
-                  <div className="border border-slate-200/80 dark:border-slate-800 rounded-xl p-3 bg-slate-50/50 dark:bg-slate-900/20">
+                  <div className="border border-slate-200/80 dark:border-slate-800 rounded-xl p-2 sm:p-3 bg-slate-50/50 dark:bg-slate-900/20">
                     <span className="block text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Tổng ngày nghỉ phép</span>
                     <span className="text-base font-extrabold text-slate-900 dark:text-white mt-1 block">{stats.totalLeave} <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400">ngày</span></span>
                   </div>
-                  <div className="border border-slate-200/80 dark:border-slate-800 rounded-xl p-3 bg-slate-50/50 dark:bg-slate-900/20">
+                  <div className="border border-slate-200/80 dark:border-slate-800 rounded-xl p-2 sm:p-3 bg-slate-50/50 dark:bg-slate-900/20">
                     <span className="block text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Tổng giờ tăng ca OT</span>
                     <span className="text-base font-extrabold text-slate-900 dark:text-white mt-1 block">{stats.totalOtHours.toFixed(1)} <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400">giờ</span></span>
                   </div>
-                  <div className="border border-slate-200/80 dark:border-slate-800 rounded-xl p-3 bg-slate-50/50 dark:bg-slate-900/20">
+                  <div className="border border-slate-200/80 dark:border-slate-800 rounded-xl p-2 sm:p-3 bg-slate-50/50 dark:bg-slate-900/20">
                     <span className="block text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Tổng ngày vắng mặt</span>
                     <span className="text-base font-extrabold text-slate-900 dark:text-white mt-1 block">{stats.totalAbsent} <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400">ngày</span></span>
                   </div>
                 </div>
 
                 {/* Detailed Table */}
-                <div className="mb-8 overflow-x-auto max-h-[400px] overflow-y-auto custom-scrollbar rounded-xl border border-slate-200 dark:border-slate-800/80 relative">
-                  <table className="w-full text-left border-collapse text-[11px]">
+                <div onTouchStart={(e) => e.stopPropagation()} onTouchMove={(e) => e.stopPropagation()} onTouchEnd={(e) => e.stopPropagation()} className="mb-8 overflow-x-auto max-h-[450px] overflow-y-auto custom-scrollbar rounded-xl border border-slate-200 dark:border-slate-800/80 relative">
+                  <table className="no-swipe w-full min-w-[500px] sm:min-w-0 text-left border-collapse text-[11px]">
                     <thead className="sticky top-0 z-10">
-                      <tr className="bg-slate-100/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 font-bold text-slate-700 dark:text-slate-300 text-[10px] uppercase">
-                        <th className="p-2.5 text-center w-10 bg-slate-100/95 dark:bg-slate-900/95 backdrop-blur-md sticky top-0">STT</th>
-                        <th className="p-2.5 bg-slate-100/95 dark:bg-slate-900/95 backdrop-blur-md sticky top-0">Họ và Tên</th>
-                        <th className="p-2.5 text-center w-16 bg-slate-100/95 dark:bg-slate-900/95 backdrop-blur-md sticky top-0">Đi làm (công)</th>
-                        <th className="p-2.5 text-center w-16 bg-slate-100/95 dark:bg-slate-900/95 backdrop-blur-md sticky top-0">Vắng mặt</th>
-                        <th className="p-2.5 text-center w-14 bg-slate-100/95 dark:bg-slate-900/95 backdrop-blur-md sticky top-0">Nghỉ phép</th>
-                        <th className="p-2.5 bg-slate-100/95 dark:bg-slate-900/95 backdrop-blur-md sticky top-0">Chi tiết ngày nghỉ</th>
-                        <th className="p-2.5 text-center w-16 bg-slate-100/95 dark:bg-slate-900/95 backdrop-blur-md sticky top-0">Tăng ca OT</th>
-                        <th className="p-2.5 bg-slate-100/95 dark:bg-slate-900/95 backdrop-blur-md sticky top-0">Chi tiết tăng ca (OT)</th>
-                        <th className="p-2.5 text-center w-14 bg-slate-100/95 dark:bg-slate-900/95 backdrop-blur-md sticky top-0">Nghỉ lễ</th>
+                      <tr className="no-swipe bg-slate-100/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 font-bold text-slate-700 dark:text-slate-300 text-[10px] uppercase">
+                        <th className="p-1.5 sm:p-2.5 text-center w-10 bg-slate-100/95 dark:bg-slate-900/95 backdrop-blur-md sticky top-0">STT</th>
+                        <th className="p-1.5 sm:p-2.5 bg-slate-100/95 dark:bg-slate-900/95 backdrop-blur-md sticky top-0">Họ và Tên</th>
+                        <th className="p-1.5 sm:p-2.5 text-center whitespace-nowrap bg-slate-100/95 dark:bg-slate-900/95 backdrop-blur-md sticky top-0">Đi làm (công)</th>
+                        <th className="p-1.5 sm:p-2.5 text-center whitespace-nowrap bg-slate-100/95 dark:bg-slate-900/95 backdrop-blur-md sticky top-0">Vắng mặt</th>
+                        <th className="p-1.5 sm:p-2.5 text-center whitespace-nowrap bg-slate-100/95 dark:bg-slate-900/95 backdrop-blur-md sticky top-0">Nghỉ phép</th>
+                        <th className="p-1.5 sm:p-2.5 bg-slate-100/95 dark:bg-slate-900/95 backdrop-blur-md sticky top-0">Chi tiết ngày nghỉ</th>
+                        <th className="p-1.5 sm:p-2.5 text-center whitespace-nowrap bg-slate-100/95 dark:bg-slate-900/95 backdrop-blur-md sticky top-0">Tăng ca OT</th>
+                        <th className="p-1.5 sm:p-2.5 bg-slate-100/95 dark:bg-slate-900/95 backdrop-blur-md sticky top-0">Chi tiết tăng ca (OT)</th>
+                        <th className="p-1.5 sm:p-2.5 text-center whitespace-nowrap bg-slate-100/95 dark:bg-slate-900/95 backdrop-blur-md sticky top-0">Nghỉ lễ</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200 dark:divide-slate-800/60">
@@ -2099,17 +2778,17 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
                         return (
                           <tr 
                             key={report.employeeName} 
-                            className="group hover:bg-slate-100 dark:hover:bg-white transition-all duration-150 border-b border-slate-100 dark:border-slate-800/40 last:border-0 cursor-pointer"
+                            className="no-swipe group hover:bg-indigo-50/80 dark:hover:bg-slate-800 transition-colors border-b border-slate-100 dark:border-slate-800/40 last:border-0 cursor-pointer relative"
                           >
-                            <td className="p-2.5 text-center font-bold text-slate-500 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-black font-mono transition-colors">{idx + 1}</td>
-                            <td className="p-2.5 font-extrabold text-slate-900 dark:text-white group-hover:text-slate-900 dark:group-hover:text-black text-xs transition-colors">{report.employeeName}</td>
-                            <td className="p-2.5 text-center font-black text-slate-900 dark:text-white group-hover:text-slate-900 dark:group-hover:text-black transition-colors">{report.presentDays}</td>
-                            <td className="p-2.5 text-center text-rose-600 dark:text-rose-400 group-hover:text-rose-700 dark:group-hover:text-rose-800 font-semibold transition-colors">{report.absentDays}</td>
-                            <td className="p-2.5 text-center font-bold text-amber-700 dark:text-amber-500 group-hover:text-amber-800 dark:group-hover:text-amber-700 transition-colors">{report.leaveDays}</td>
-                            <td className="p-2.5 text-left text-slate-700 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-black font-medium text-[10px] whitespace-normal break-words max-w-[220px] transition-colors">{restDetailsStr}</td>
-                            <td className="p-2.5 text-center text-violet-600 dark:text-violet-400 group-hover:text-violet-800 dark:group-hover:text-violet-950 font-bold transition-colors">{report.totalOtHours.toFixed(1)}h</td>
-                            <td className="p-2.5 text-left text-purple-850 dark:text-purple-300 group-hover:text-purple-950 dark:group-hover:text-purple-950 font-semibold text-[10px] whitespace-normal break-words max-w-[280px] transition-colors">{otDetailsStr}</td>
-                            <td className="p-2.5 text-center text-pink-700 dark:text-pink-400 group-hover:text-pink-900 dark:group-hover:text-pink-800 font-semibold transition-colors">{report.holidayDays}</td>
+                            <td className="p-1.5 sm:p-2.5 text-center font-bold text-slate-500 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-black font-mono transition-colors">{idx + 1}</td>
+                            <td className="p-1.5 sm:p-2.5 font-extrabold text-slate-900 dark:text-white group-hover:text-slate-900 dark:group-hover:text-black text-xs transition-colors">{getDisplayNameFromList(report.employeeName, false, employees, true)}</td>
+                            <td className="p-1.5 sm:p-2.5 text-center font-black text-slate-900 dark:text-white group-hover:text-slate-900 dark:group-hover:text-black transition-colors">{report.presentDays}</td>
+                            <td className="p-1.5 sm:p-2.5 text-center text-rose-600 dark:text-rose-400 group-hover:text-rose-700 dark:group-hover:text-rose-800 font-semibold transition-colors">{report.absentDays}</td>
+                            <td className="p-1.5 sm:p-2.5 text-center font-bold text-amber-700 dark:text-amber-500 group-hover:text-amber-800 dark:group-hover:text-amber-700 transition-colors">{report.leaveDays}</td>
+                            <td className="p-1.5 sm:p-2.5 text-left text-slate-700 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-black font-medium text-[10px] whitespace-normal break-words max-w-[220px] transition-colors">{restDetailsStr}</td>
+                            <td className="p-1.5 sm:p-2.5 text-center text-violet-600 dark:text-violet-400 group-hover:text-violet-800 dark:group-hover:text-violet-950 font-bold transition-colors">{report.totalOtHours.toFixed(1)}h</td>
+                            <td className="p-1.5 sm:p-2.5 text-left text-purple-850 dark:text-purple-300 group-hover:text-purple-950 dark:group-hover:text-purple-950 font-semibold text-[10px] whitespace-normal break-words max-w-[280px] transition-colors">{otDetailsStr}</td>
+                            <td className="p-1.5 sm:p-2.5 text-center text-pink-700 dark:text-pink-400 group-hover:text-pink-900 dark:group-hover:text-pink-800 font-semibold transition-colors">{report.holidayDays}</td>
                           </tr>
                         );
                       })}
@@ -2118,7 +2797,7 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
                 </div>
 
                 {/* Law / Explanatory section */}
-                <div className="p-3 bg-slate-50 dark:bg-slate-900/30 border border-slate-200 dark:border-slate-800 rounded-xl mb-12 text-[9px] text-slate-500 dark:text-slate-400 leading-relaxed space-y-1">
+                <div className="p-2 sm:p-3 bg-slate-50 dark:bg-slate-900/30 border border-slate-200 dark:border-slate-800 rounded-xl mb-12 text-[9px] text-slate-500 dark:text-slate-400 leading-relaxed space-y-1">
                   <p><b>Ghi chú quy chế tính toán:</b></p>
                   <p>- Tăng ca (OT) được tổng hợp tự động từ giờ check-in/check-out tăng ca đăng ký trên hệ thống của nhân viên.</p>
                   <p>- Dữ liệu được bảo mật và tự động ghi dấu hoạt động (Audit Logs) trên hệ thống khi xuất bản.</p>
@@ -2133,11 +2812,132 @@ export default function ReportsTab({ accessToken, employees, timeLogs, onLogUpda
 
               </div>
             </div>
-
           </div>
+
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Offscreen printable container for immediate PNG/PDF exports without forcing modal open */}
+      <div className="fixed top-0 -left-[9999px] z-[-9999] w-[1122px] overflow-hidden pointer-events-none bg-white">
+        <div ref={hiddenReportRef} className="print-report-container w-[1122px] min-h-[794px] bg-white text-slate-900 p-10 shadow-md font-sans border border-slate-200">
+          {/* Letterhead */}
+          <div className="flex justify-between items-start border-b-2 border-slate-900 pb-4">
+            <div>
+              <h4 className="font-extrabold text-[13px] tracking-wider text-slate-900 uppercase">{pdfCompanyName}</h4>
+              <p className="text-[10px] text-slate-500 font-medium">{pdfAddress}</p>
+              <p className="text-[10px] text-slate-500 font-medium">{pdfHotlineEmail}</p>
+            </div>
+            <div className="text-right">
+              <h5 className="font-bold text-[11px] uppercase tracking-wider text-slate-900">MẪU BÁO CÁO CHUẨN</h5>
+              <p className="text-[10px] text-slate-500 font-medium">Mã tài liệu: {pdfDocumentCode}</p>
+              <p className="text-[10px] text-slate-500 font-medium">Liên kết: Phòng Visual</p>
+            </div>
+          </div>
+
+          {/* Title */}
+          <div className="text-center my-8 space-y-1.5">
+            <h2 className="font-extrabold text-xl sm:text-2xl tracking-tight text-slate-900 uppercase">
+              {pdfReportTitle}
+            </h2>
+            <p className="text-xs font-bold text-slate-600 uppercase">
+              Tháng {selectedMonth} năm {selectedYear}
+            </p>
+            <p className="text-[10px] italic text-slate-400">
+              (Phục vụ đối chiếu chấm công, tính lương và lưu trữ hồ sơ kế toán hằng tháng)
+            </p>
+          </div>
+
+          {/* Report Metadata */}
+          <div className="grid grid-cols-2 gap-2 sm:p-3 sm:gap-4 bg-slate-50 p-4.5 rounded-xl text-xs text-slate-700 border border-slate-100 mb-6">
+            <div className="space-y-1.5">
+              <p><b className="text-slate-900">Bộ phận:</b> Phòng Visual (Visual Department)</p>
+              <p><b className="text-slate-900">Kỳ báo cáo:</b> Tháng {selectedMonth}/{selectedYear}</p>
+              <p><b className="text-slate-900">Số lượng nhân sự:</b> {stats.activeWorkforce} nhân viên</p>
+            </div>
+            <div className="space-y-1.5">
+              <p><b className="text-slate-900">Ngày kết xuất:</b> {new Date().toLocaleDateString('vi-VN')} (Giờ Việt Nam)</p>
+              <p><b className="text-slate-900">Trạng thái:</b> Đã đồng bộ từ Google Sheets</p>
+              <p><b className="text-slate-900">Đơn vị tính:</b> Ngày công / Giờ (OT)</p>
+            </div>
+          </div>
+
+          {/* KPIs summary */}
+          <div className="grid grid-cols-4 gap-2 sm:p-3 text-center mb-8">
+            <div className="border border-slate-200/80 rounded-xl p-2 sm:p-3 bg-slate-50/50">
+              <span className="block text-[8px] font-bold text-slate-400 uppercase tracking-wider">Tổng công đi làm</span>
+              <span className="text-base font-extrabold text-slate-900 mt-1 block">{stats.totalPresent} <span className="text-[10px] font-medium text-slate-500">công</span></span>
+            </div>
+            <div className="border border-slate-200/80 rounded-xl p-2 sm:p-3 bg-slate-50/50">
+              <span className="block text-[8px] font-bold text-slate-400 uppercase tracking-wider">Tổng ngày nghỉ phép</span>
+              <span className="text-base font-extrabold text-slate-900 mt-1 block">{stats.totalLeave} <span className="text-[10px] font-medium text-slate-500">ngày</span></span>
+            </div>
+            <div className="border border-slate-200/80 rounded-xl p-2 sm:p-3 bg-slate-50/50">
+              <span className="block text-[8px] font-bold text-slate-400 uppercase tracking-wider">Tổng giờ tăng ca OT</span>
+              <span className="text-base font-extrabold text-slate-900 mt-1 block">{stats.totalOtHours.toFixed(1)} <span className="text-[10px] font-medium text-slate-500">giờ</span></span>
+            </div>
+            <div className="border border-slate-200/80 rounded-xl p-2 sm:p-3 bg-slate-50/50">
+              <span className="block text-[8px] font-bold text-slate-400 uppercase tracking-wider">Tổng ngày vắng mặt</span>
+              <span className="text-base font-extrabold text-slate-900 mt-1 block">{stats.totalAbsent} <span className="text-[10px] font-medium text-slate-500">ngày</span></span>
+            </div>
+          </div>
+
+          {/* Detailed Table */}
+          <div className="mb-8 overflow-hidden rounded-xl border border-slate-200 relative">
+            <table className="no-swipe w-full min-w-[500px] sm:min-w-0 text-left border-collapse text-[11px]">
+              <thead>
+                <tr className="no-swipe bg-slate-100 border-b border-slate-200 font-bold text-slate-700 text-[10px] uppercase">
+                  <th className="p-1.5 sm:p-2.5 text-center w-10">STT</th>
+                  <th className="p-1.5 sm:p-2.5">Họ và Tên</th>
+                  <th className="p-1.5 sm:p-2.5 text-center whitespace-nowrap">Đi làm (công)</th>
+                  <th className="p-1.5 sm:p-2.5 text-center whitespace-nowrap">Vắng mặt</th>
+                  <th className="p-1.5 sm:p-2.5 text-center whitespace-nowrap">Nghỉ phép</th>
+                  <th className="p-1.5 sm:p-2.5">Chi tiết ngày nghỉ</th>
+                  <th className="p-1.5 sm:p-2.5 text-center">Tăng ca OT</th>
+                  <th className="p-1.5 sm:p-2.5">Chi tiết tăng ca (OT)</th>
+                  <th className="p-1.5 sm:p-2.5 text-center">Nghỉ lễ</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {monthlyReports.map((report, idx) => {
+                  const restDetailsStr = getDetailedRestDaysString(report);
+                  const otDetailsStr = getOtDaysString(report, totalDaysInMonth, selectedYear, selectedMonth);
+
+                  return (
+                    <tr key={report.employeeName} className="no-swipe border-b border-slate-100">
+                      <td className="p-1.5 sm:p-2.5 text-center font-bold text-slate-500 font-mono">{idx + 1}</td>
+                      <td className="p-1.5 sm:p-2.5 font-extrabold text-slate-900 text-xs">{getDisplayNameFromList(report.employeeName, false, employees, true)}</td>
+                      <td className="p-1.5 sm:p-2.5 text-center font-black text-slate-900">{report.presentDays}</td>
+                      <td className="p-1.5 sm:p-2.5 text-center text-rose-600 font-semibold">{report.absentDays}</td>
+                      <td className="p-1.5 sm:p-2.5 text-center font-bold text-amber-700">{report.leaveDays}</td>
+                      <td className="p-1.5 sm:p-2.5 text-left text-slate-700 font-medium text-[10px] whitespace-normal break-words max-w-[220px]">{restDetailsStr}</td>
+                      <td className="p-1.5 sm:p-2.5 text-center text-violet-600 font-bold">{report.totalOtHours.toFixed(1)}h</td>
+                      <td className="p-1.5 sm:p-2.5 text-left text-purple-850 font-semibold text-[10px] whitespace-normal break-words max-w-[280px]">{otDetailsStr}</td>
+                      <td className="p-1.5 sm:p-2.5 text-center text-pink-700 font-semibold">{report.holidayDays}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Law / Explanatory section */}
+          <div className="p-2 sm:p-3 bg-slate-50 border border-slate-200 rounded-xl mb-12 text-[9px] text-slate-500 leading-relaxed space-y-1">
+            <p><b>Ghi chú quy chế tính toán:</b></p>
+            <p>- Tăng ca (OT) được tổng hợp tự động từ giờ check-in/check-out tăng ca đăng ký trên hệ thống của nhân viên.</p>
+            <p>- Dữ liệu được bảo mật và tự động ghi dấu hoạt động (Audit Logs) trên hệ thống khi xuất bản.</p>
+          </div>
+
+          {/* Signature Block */}
+          <div className="mt-8 border-t border-slate-100 pt-6">
+            <div className="text-right text-xs font-bold text-slate-700 pr-4">
+              <span>{pdfDateString}</span>
+            </div>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
-}
+});
+export default ReportsTab;

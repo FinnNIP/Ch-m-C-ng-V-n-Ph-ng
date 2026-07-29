@@ -115,7 +115,7 @@ export async function checkAndSetupSheets(accessToken: string): Promise<void> {
       await writeSheetHeaders(
         accessToken,
         "DanhSachNhanVien!A1:F1",
-        ["Họ Và Tên", "Chức Vụ", "Ngày Đăng Ký", "Ngày Rời Khỏi", "Quỹ Phép Năm", "Phép Tồn Năm Trước"]
+        ["Họ Và Tên", "Chức Vụ", "Ngày Đăng Ký", "Ngày Rời Khỏi", "Quỹ Phép Năm", "Phép Tồn Năm Trước", "Tên Hiển Thị (Guest)"]
       );
     }
 
@@ -127,6 +127,9 @@ export async function checkAndSetupSheets(accessToken: string): Promise<void> {
       );
     }
 
+    // 4. Format sheet headers with frozen row 1, custom colors and column widths
+    await formatGoogleSheetStyles(accessToken);
+
     // Cache the configuration success to skip on subsequent reloads
     if (typeof window !== 'undefined') {
       localStorage.setItem('sheets_setup_' + spreadsheetId, 'true');
@@ -135,6 +138,88 @@ export async function checkAndSetupSheets(accessToken: string): Promise<void> {
   } catch (error) {
     console.error("Lỗi khi đồng bộ thiết lập Google Sheets:", error);
     throw error;
+  }
+}
+
+/**
+ * Formats all Google Sheet tabs with freeze header row, custom indigo background color, and optimized column widths
+ */
+export async function formatGoogleSheetStyles(accessToken: string): Promise<void> {
+  const spreadsheetId = getSpreadsheetId();
+  try {
+    const metadata = await googleFetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}`,
+      accessToken
+    );
+    const sheets = metadata.sheets || [];
+    const requests: any[] = [];
+
+    sheets.forEach((sheet: any) => {
+      const sheetId = sheet.properties.sheetId;
+      // Freeze row 1
+      requests.push({
+        updateSheetProperties: {
+          properties: {
+            sheetId: sheetId,
+            gridProperties: { frozenRowCount: 1 }
+          },
+          fields: 'gridProperties.frozenRowCount'
+        }
+      });
+
+      // Format header row 0 (A1:Z1) with Indigo background fill & white bold text
+      requests.push({
+        repeatCell: {
+          range: {
+            sheetId: sheetId,
+            startRowIndex: 0,
+            endRowIndex: 1,
+            startColumnIndex: 0,
+            endColumnIndex: 10
+          },
+          cell: {
+            userEnteredFormat: {
+              backgroundColor: { red: 0.28, green: 0.33, blue: 0.88 }, // Deep Indigo/Royal Blue #4755E6
+              textFormat: {
+                foregroundColor: { red: 1.0, green: 1.0, blue: 1.0 },
+                fontSize: 10,
+                bold: true
+              },
+              horizontalAlignment: 'CENTER',
+              verticalAlignment: 'MIDDLE'
+            }
+          },
+          fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)'
+        }
+      });
+
+      // Set default column widths to 175px
+      requests.push({
+        updateDimensionProperties: {
+          range: {
+            sheetId: sheetId,
+            dimension: 'COLUMNS',
+            startIndex: 0,
+            endIndex: 8
+          },
+          properties: { pixelSize: 175 },
+          fields: 'pixelSize'
+        }
+      });
+    });
+
+    if (requests.length > 0) {
+      await googleFetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`,
+        accessToken,
+        {
+          method: 'POST',
+          body: JSON.stringify({ requests })
+        }
+      );
+    }
+  } catch (err) {
+    console.warn("Đã bỏ qua định dạng giao diện Google Sheets:", err);
   }
 }
 
@@ -195,7 +280,7 @@ export async function getEmployees(accessToken: string): Promise<Employee[]> {
   const spreadsheetId = getSpreadsheetId();
   try {
     const data = await googleFetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/DanhSachNhanVien!A2:F1000`,
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/DanhSachNhanVien!A2:G1000`,
       accessToken
     );
 
@@ -207,6 +292,7 @@ export async function getEmployees(accessToken: string): Promise<Employee[]> {
       leftAt: row[3] || "",
       leaveAllowance: row[4] ? Number(row[4]) : undefined,
       leaveCarryover: row[5] ? Number(row[5]) : undefined,
+      displayName: row[6] || undefined,
       rowIndex: idx + 2
     })).filter((emp: Employee) => emp.name !== "");
 
@@ -230,7 +316,7 @@ export async function addEmployee(accessToken: string, employee: Employee): Prom
     return;
   }
   const spreadsheetId = getSpreadsheetId();
-  const range = "DanhSachNhanVien!A:F";
+  const range = "DanhSachNhanVien!A:G";
   const values = [
     [
       employee.name,
@@ -238,7 +324,8 @@ export async function addEmployee(accessToken: string, employee: Employee): Prom
       employee.registeredAt,
       employee.leftAt || "",
       employee.leaveAllowance !== undefined ? employee.leaveAllowance : "",
-      employee.leaveCarryover !== undefined ? employee.leaveCarryover : ""
+      employee.leaveCarryover !== undefined ? employee.leaveCarryover : "",
+      employee.displayName || ""
     ]
   ];
 
@@ -317,7 +404,7 @@ export async function saveEmployeesOrder(accessToken: string, employees: Employe
     return;
   }
   const spreadsheetId = getSpreadsheetId();
-  const range = `DanhSachNhanVien!A2:F${employees.length + 1}`;
+  const range = `DanhSachNhanVien!A2:G${employees.length + 1}`;
   
   const values = employees.map(emp => [
     emp.name,
@@ -325,13 +412,14 @@ export async function saveEmployeesOrder(accessToken: string, employees: Employe
     emp.registeredAt,
     emp.leftAt || "",
     emp.leaveAllowance !== undefined ? emp.leaveAllowance : "",
-    emp.leaveCarryover !== undefined ? emp.leaveCarryover : ""
+    emp.leaveCarryover !== undefined ? emp.leaveCarryover : "",
+    emp.displayName || ""
   ]);
 
   // First, clear the existing range to make sure any extra old rows are wiped if size decreased
   try {
     await googleFetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/DanhSachNhanVien!A2:F1000:clear`,
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/DanhSachNhanVien!A2:G1000:clear`,
       accessToken,
       { method: 'POST' }
     );
@@ -367,7 +455,8 @@ export async function updateEmployee(
   newRegisteredAt: string,
   newLeftAt: string,
   newLeaveAllowance?: number,
-  newLeaveCarryover?: number
+  newLeaveCarryover?: number,
+  newDisplayName?: string
 ): Promise<void> {
   if (!accessToken || accessToken === 'local') {
     const data = await getLocalState();
@@ -403,14 +492,15 @@ export async function updateEmployee(
   }
 
   // 1. Update the employee row (A is name, B is role, C is registeredAt, D is leftAt, E is leaveAllowance, F is leaveCarryover)
-  const range = `DanhSachNhanVien!A${rowIndex}:F${rowIndex}`;
+  const range = `DanhSachNhanVien!A${rowIndex}:G${rowIndex}`;
   const values = [[
     newName, 
     newRole, 
     newRegisteredAt, 
     newLeftAt, 
     newLeaveAllowance !== undefined ? newLeaveAllowance : "",
-    newLeaveCarryover !== undefined ? newLeaveCarryover : ""
+    newLeaveCarryover !== undefined ? newLeaveCarryover : "",
+    newDisplayName || ""
   ]];
 
   await googleFetch(
@@ -833,14 +923,15 @@ export async function addEmployeesBulk(accessToken: string, employees: Employee[
     return;
   }
   const spreadsheetId = getSpreadsheetId();
-  const range = "DanhSachNhanVien!A:F";
+  const range = "DanhSachNhanVien!A:G";
   const values = employees.map(emp => [
     emp.name,
     emp.role,
     emp.registeredAt,
     emp.leftAt || "",
     emp.leaveAllowance !== undefined ? emp.leaveAllowance : "",
-    emp.leaveCarryover !== undefined ? emp.leaveCarryover : ""
+    emp.leaveCarryover !== undefined ? emp.leaveCarryover : "",
+    emp.displayName || ""
   ]);
 
   await googleFetch(
@@ -1182,5 +1273,31 @@ export async function syncGridDataToStandardSheets(accessToken: string): Promise
 
   } catch (error) {
     console.error("Lỗi khi tự động đồng bộ dữ liệu bảng lưới:", error);
+  }
+}
+
+/**
+ * Deletes all employees and time logs.
+ */
+export async function deleteAllData(accessToken: string): Promise<void> {
+  if (!accessToken || accessToken === 'local') {
+    await saveLocalState([], []);
+    return;
+  }
+  const spreadsheetId = getSpreadsheetId();
+  try {
+    await googleFetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/DanhSachNhanVien!A2:G1000:clear`,
+      accessToken,
+      { method: 'POST' }
+    );
+    await googleFetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/NhatKyChamCong!A2:L10000:clear`,
+      accessToken,
+      { method: 'POST' }
+    );
+  } catch (err) {
+    console.error("Lỗi khi xóa dữ liệu:", err);
+    throw err;
   }
 }

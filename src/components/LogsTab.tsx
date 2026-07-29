@@ -185,9 +185,9 @@ export default function LogsTab({ logs, onRefresh, isLoading = false }: LogsTabP
               onChange={(e) => setSelectedUserFilter(e.target.value)}
               className="w-full pl-10 pr-8 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-850 rounded-2xl text-xs focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 outline-none text-slate-800 dark:text-slate-100 transition-all font-medium appearance-none cursor-pointer"
             >
-              <option value="all">Tất cả người dùng (User)</option>
+              <option value="all" className="bg-white text-slate-900 dark:bg-slate-900 dark:text-white">Tất cả người dùng (User)</option>
               {uniqueUsers.map(u => (
-                <option key={u} value={u}>{u}</option>
+                <option key={u} value={u} className="bg-white text-slate-900 dark:bg-slate-900 dark:text-white">{u}</option>
               ))}
             </select>
             <span className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-slate-400">
@@ -205,9 +205,9 @@ export default function LogsTab({ logs, onRefresh, isLoading = false }: LogsTabP
               onChange={(e) => setSelectedActionFilter(e.target.value)}
               className="w-full pl-10 pr-8 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-850 rounded-2xl text-xs focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 outline-none text-slate-800 dark:text-slate-100 transition-all font-medium appearance-none cursor-pointer"
             >
-              <option value="all">Tất cả hành động (Action)</option>
+              <option value="all" className="bg-white text-slate-900 dark:bg-slate-900 dark:text-white">Tất cả hành động (Action)</option>
               {uniqueActions.map(act => (
-                <option key={act} value={act}>{act}</option>
+                <option key={act} value={act} className="bg-white text-slate-900 dark:bg-slate-900 dark:text-white">{act}</option>
               ))}
             </select>
             <span className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-slate-400">
@@ -254,7 +254,7 @@ export default function LogsTab({ logs, onRefresh, isLoading = false }: LogsTabP
 
       {/* Logs Table Area */}
       <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-[28px] overflow-hidden shadow-sm transition-colors duration-300">
-        <div className="overflow-x-auto max-h-[500px] overflow-y-auto custom-scrollbar relative">
+        <div onTouchStart={(e) => e.stopPropagation()} onTouchMove={(e) => e.stopPropagation()} onTouchEnd={(e) => e.stopPropagation()} className="overflow-x-auto max-h-[500px] overflow-y-auto custom-scrollbar relative">
           <table className="w-full text-left border-collapse">
             <thead className="sticky top-0 z-10">
               <tr className="bg-slate-50/95 dark:bg-slate-950/95 backdrop-blur-md border-b border-slate-100 dark:border-slate-800/80">

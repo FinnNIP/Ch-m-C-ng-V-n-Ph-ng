@@ -44,6 +44,27 @@
   body {
     @apply antialiased font-sans transition-colors duration-300;
   }
+  .gradient-border-image {
+    border-image: linear-gradient(to right, rgba(99, 102, 241, 0.6), rgba(14, 165, 233, 0.4), transparent) 1;
+  }
+  h1 {
+    transition: transform 0.3s ease, text-shadow 0.3s ease, box-shadow 0.3s ease;
+  }
+  h1:hover {
+    transform: scale(1.02);
+    text-shadow: 0 0 12px rgba(99, 102, 241, 0.6), 0 0 20px rgba(14, 165, 233, 0.4);
+  }
+  select option {
+    color: #0f172a !important;
+    background-color: #ffffff !important;
+  }
+  .dark select option,
+  html.dark select option,
+  .dark option,
+  html.dark option {
+    color: #f8fafc !important;
+    background-color: #0f172a !important;
+  }
 }
 
 @media print {
@@ -52,51 +73,115 @@
     margin: 1cm;
   }
 
-  /* Hide everything except the print-only report container */
+  /* Reset body and html layout for printing */
+  html, body {
+    height: auto !important;
+    min-height: 0 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* Hide everything under the body */
   body * {
     visibility: hidden !important;
   }
-  
-  /* Make only the print area and its children visible and force print-friendly light colors */
-  .print-report-container,
+
+  /* Detach and render ONLY the .print-report-container as a fixed viewport element */
+  .print-report-container {
+    visibility: visible !important;
+    position: fixed !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0.5cm !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    z-index: 99999999 !important;
+    display: block !important;
+  }
+
+  /* Make sure all children of .print-report-container are fully visible and forced light colors */
   .print-report-container * {
     visibility: visible !important;
     color: #000000 !important;
-    border-color: #cbd5e1 !important;
     background-color: transparent !important;
     background: transparent !important;
     text-shadow: none !important;
     box-shadow: none !important;
   }
-  
-  /* Reset background and text colors for high-contrast paper print */
-  html, body, .print-report-container {
-    background-color: #ffffff !important;
-    background: #ffffff !important;
-    color: #000000 !important;
-    color-scheme: light !important;
-    visibility: visible !important;
+
+  /* Ensure scrollable containers show all rows */
+  .print-report-container div,
+  .print-report-container .overflow-x-auto,
+  .print-report-container .max-h-\[400px\] {
+    max-height: none !important;
+    height: auto !important;
+    overflow: visible !important;
+    overflow-x: visible !important;
+    overflow-y: visible !important;
   }
 
-  /* Absolute position at the top left of the printed A4 page */
-  .print-report-container {
-    position: absolute !important;
-    left: 0 !important;
-    top: 0 !important;
+  /* Ensure tables look incredibly professional and clear */
+  .print-report-container table {
     width: 100% !important;
-    margin: 0 !important;
-    padding: 1.5cm !important;
+    table-layout: auto !important;
+    border-collapse: collapse !important;
+    page-break-inside: auto !important;
+  }
+
+  .print-report-container tr {
+    page-break-inside: avoid !important;
+    page-break-after: auto !important;
+  }
+
+  .print-report-container thead {
+    display: table-header-group !important;
+  }
+
+  .print-report-container th,
+  .print-report-container td {
+    color: #000000 !important;
+    background-color: #ffffff !important;
+    border-color: #cbd5e1 !important;
+    padding: 6px 10px !important;
+    text-shadow: none !important;
     box-shadow: none !important;
+  }
+
+  .print-report-container th {
+    border-bottom: 2px solid #475569 !important;
+    font-weight: bold !important;
+  }
+
+  .print-report-container td {
+    border-bottom: 1px solid #e2e8f0 !important;
+  }
+
+  /* Force hide anything marked with no-print, buttons, forms, toolbars, and scrollbars */
+  .no-print,
+  button,
+  input,
+  textarea,
+  select,
+  .no-print * {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    height: 0 !important;
+    width: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
     border: none !important;
   }
 
-  /* Hide print buttons and preview close elements */
-  .no-print {
-    display: none !important;
-    visibility: hidden !important;
-  }
-
-  /* Force background colors to print correctly (modern browsers) */
+  /* Force browsers to print backgrounds correctly if they support it */
   * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
@@ -573,22 +658,136 @@ html, body, #root {
 
 /* Neon Glass Card Styles */
 .neon-glass-card {
-    --border: 1.5px;
-    --border-color: hsl(var(--hue2, 210), 12%, 22%);
+    --border: 1px;
     --radius: 28px;
     --ease: cubic-bezier(0.5, 1, 0.89, 1);
     
     position: relative;
     border-radius: var(--radius);
-    border: var(--border) solid var(--border-color);
-    background: linear-gradient(235deg, hsl(var(--hue1, 195) 50% 8% / 0.85), hsl(var(--hue1, 195) 50% 10% / 0) 40%), 
-                linear-gradient(45deg , hsl(var(--hue2, 210) 50% 8% / 0.85), hsl(var(--hue2, 210) 50% 10% / 0) 40%), 
-                linear-gradient(hsl(220deg 25% 4.8% / 0.75));
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    box-shadow: hsl(var(--hue2, 210) 50% 2%) 0px 10px 16px -8px, 
-                hsl(var(--hue2, 210) 50% 4%) 0px 20px 36px -14px;
-    transition: border-color 0.3s, box-shadow 0.3s;
+    border: var(--border) solid transparent;
+    box-sizing: border-box;
+    
+    /* Dynamic flex basis / percentage width to fluidly wrap and scale without overflowing */
+    flex: 0 1 340px;
+    width: 100%;
+    max-width: 340px;
+    
+    /* 70% base background opacity and glassmorphic gradients */
+    background-clip: padding-box, border-box;
+    background-origin: padding-box, border-box;
+    background-image: 
+        linear-gradient(hsl(220deg 25% 4.8% / 0.70), hsl(220deg 25% 4.8% / 0.70)), 
+        linear-gradient(135deg, hsl(var(--hue1, 195) 50% 50% / 0.25), hsl(var(--hue2, 210) 50% 20% / 0.05));
+
+    /* 24px backdrop filter blur */
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    
+    /* Generous 2rem inner padding, centered vertically */
+    padding: 2rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+
+    /* Base shadow depth */
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 
+                0 8px 10px -6px rgba(0, 0, 0, 0.5);
+                
+    /* Hover and scale transitions */
+    transition: transform 0.3s var(--ease), box-shadow 0.3s var(--ease), border-color 0.3s;
+
+    /* Stagger-fade entrance animation */
+    animation: neon-card-entrance 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation-delay: calc(var(--stagger-delay, 0) * 80ms);
+}
+
+/* Stagger delay automatic variables based on child order */
+.neon-glass-card:nth-child(1) { --stagger-delay: 1; }
+.neon-glass-card:nth-child(2) { --stagger-delay: 2; }
+.neon-glass-card:nth-child(3) { --stagger-delay: 3; }
+.neon-glass-card:nth-child(4) { --stagger-delay: 4; }
+.neon-glass-card:nth-child(5) { --stagger-delay: 5; }
+.neon-glass-card:nth-child(6) { --stagger-delay: 6; }
+.neon-glass-card:nth-child(7) { --stagger-delay: 7; }
+.neon-glass-card:nth-child(8) { --stagger-delay: 8; }
+.neon-glass-card:nth-child(9) { --stagger-delay: 9; }
+.neon-glass-card:nth-child(10) { --stagger-delay: 10; }
+.neon-glass-card:nth-child(11) { --stagger-delay: 11; }
+.neon-glass-card:nth-child(12) { --stagger-delay: 12; }
+.neon-glass-card:nth-child(n+13) { --stagger-delay: 13; }
+
+/* Pseudo-element overlay with soft white diagonal gradient simulating premium glass reflection */
+.neon-glass-card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.03) 40%, transparent 60%);
+    pointer-events: none;
+    z-index: 5;
+}
+
+/* Active / Checked In Employee Rhythmic pulse border */
+.neon-glass-card.status-present {
+    animation: checked-in-pulse 3s infinite ease-in-out, neon-card-entrance 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation-delay: 0s, calc(var(--stagger-delay, 0) * 80ms);
+}
+
+.neon-glass-card:hover {
+    transform: scale(1.012);
+    box-shadow: 0 20px 35px -10px rgba(0, 0, 0, 0.65), 
+                0 15px 20px -10px rgba(0, 0, 0, 0.55),
+                0 0 15px 1px rgba(99, 102, 241, 0.15);
+}
+
+/* Hover overrides for active checked-in items to retain vibrant green aesthetic */
+.neon-glass-card.status-present:hover {
+    box-shadow: 0 20px 35px -10px rgba(16, 185, 129, 0.35), 
+                0 15px 20px -10px rgba(16, 185, 129, 0.25),
+                0 0 25px 3px rgba(16, 185, 129, 0.45);
+    border-color: rgba(16, 185, 129, 0.6) !important;
+}
+
+/* Animation Keyframes */
+@keyframes neon-card-entrance {
+    0% {
+        opacity: 0;
+        transform: translateY(16px);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes checked-in-pulse {
+    0%, 100% {
+        box-shadow: 0 10px 25px -5px rgba(16, 185, 129, 0.15), 
+                    0 8px 10px -6px rgba(16, 185, 129, 0.1),
+                    0 0 10px 1px rgba(16, 185, 129, 0.15);
+        border-color: rgba(16, 185, 129, 0.2);
+    }
+    50% {
+        box-shadow: 0 15px 30px -5px rgba(16, 185, 129, 0.35), 
+                    0 10px 12px -5px rgba(16, 185, 129, 0.2),
+                    0 0 18px 2.5px rgba(16, 185, 129, 0.35);
+        border-color: rgba(16, 185, 129, 0.5);
+    }
+}
+
+@keyframes neon-ripple {
+    0% {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 0.45;
+    }
+    100% {
+        transform: translate(-50%, -50%) scale(35);
+        opacity: 0;
+    }
+}
+
+.animate-neon-ripple {
+    animation: neon-ripple 0.65s cubic-bezier(0.1, 0.8, 0.3, 1) forwards;
 }
 
 .neon-glass-card .shine,
@@ -752,4 +951,850 @@ html, body, #root {
     top: auto;
 }
 
+/* Custom scrollbar styles to replace default clunky browser scrollbars globally */
+::-webkit-scrollbar,
+.custom-scrollbar::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
 
+::-webkit-scrollbar-track,
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb,
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3); /* Slate-400 translucent */
+  border-radius: 9999px;
+  border: 1.5px solid transparent;
+  background-clip: padding-box;
+}
+
+.dark ::-webkit-scrollbar-thumb,
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.35); /* Translucent neon indigo */
+  border: 1.5px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover,
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.55);
+  border: 1.5px solid transparent;
+  background-clip: padding-box;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover,
+.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.65); /* Glowing indigo on hover */
+  border: 1.5px solid transparent;
+  background-clip: padding-box;
+}
+
+/* Hide scrollbars but keep functionality */
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+/* Premium Gradient Wipe & Glow button effects */
+.hover-gradient-wipe {
+  position: relative;
+  background-size: 200% 100% !important;
+  background-image: linear-gradient(135deg, #4f46e5 0%, #0ea5e9 50%, #4f46e5 100%) !important;
+  transition: background-position 0.5s cubic-bezier(0.25, 0.8, 0.25, 1), box-shadow 0.3s ease, transform 0.2s ease !important;
+}
+
+.hover-gradient-wipe:hover {
+  background-position: right center !important;
+  box-shadow: 0 8px 24px -4px rgba(79, 70, 229, 0.45), 0 4px 12px -2px rgba(14, 165, 233, 0.3) !important;
+  transform: translateY(-1.5px) !important;
+}
+
+.hover-gradient-wipe:active {
+  transform: translateY(0.5px) scale(0.98) !important;
+}
+
+/* Rose flavor gradient wipe for secondary primary styles (e.g. Accountant actions) */
+.hover-gradient-wipe-rose {
+  position: relative;
+  background-size: 200% 100% !important;
+  background-image: linear-gradient(135deg, #e11d48 0%, #f43f5e 50%, #e11d48 100%) !important;
+  transition: background-position 0.5s cubic-bezier(0.25, 0.8, 0.25, 1), box-shadow 0.3s ease, transform 0.2s ease !important;
+}
+
+.hover-gradient-wipe-rose:hover {
+  background-position: right center !important;
+  box-shadow: 0 8px 24px -4px rgba(225, 29, 72, 0.45) !important;
+  transform: translateY(-1.5px) !important;
+}
+
+.hover-gradient-wipe-rose:active {
+  transform: translateY(0.5px) scale(0.98) !important;
+}
+
+/* Emerald flavor gradient wipe for confirmation / success styles */
+.hover-gradient-wipe-emerald {
+  position: relative;
+  background-size: 200% 100% !important;
+  background-image: linear-gradient(135deg, #059669 0%, #10b981 50%, #059669 100%) !important;
+  transition: background-position 0.5s cubic-bezier(0.25, 0.8, 0.25, 1), box-shadow 0.3s ease, transform 0.2s ease !important;
+}
+
+.hover-gradient-wipe-emerald:hover {
+  background-position: right center !important;
+  box-shadow: 0 8px 24px -4px rgba(5, 150, 105, 0.45) !important;
+  transform: translateY(-1.5px) !important;
+}
+
+.hover-gradient-wipe-emerald:active {
+  transform: translateY(0.5px) scale(0.98) !important;
+}
+
+/* Scale & micro-glow for simple cards/buttons */
+.hover-micro-glow {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.hover-micro-glow:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.12);
+  border-color: rgba(99, 102, 241, 0.3) !important;
+}
+
+/* Smooth zoom-in container transition */
+.animate-scale-up {
+  animation: scaleUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+@keyframes scaleUp {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* Custom 20 CSS loaders styled elegantly with current color support */
+.loader-1 {
+  width: 50px;
+  aspect-ratio: 1;
+  color: currentColor;
+  border: 2px solid;
+  display: grid;
+  box-sizing: border-box;
+  animation: l1 4s infinite linear;
+}
+.loader-1::before,
+.loader-1::after {
+  content: "";
+  grid-area: 1/1;
+  margin: auto;
+  width: 70.7%;
+  aspect-ratio: 1;
+  border: 2px solid;
+  box-sizing: content-box;
+  animation: inherit;
+}
+.loader-1::after {
+  width: 50%;
+  aspect-ratio: 1;
+  border: 2px solid;
+  animation-duration: 2s;
+}
+@keyframes l1{
+  100% {transform:rotate(1turn)}
+}
+
+.loader-2 {
+  width: 40px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  color: currentColor;
+  border: 2px solid;
+  box-sizing: border-box;
+  position: relative;
+  transform-origin: left;
+  animation: l2_custom 1s infinite linear;
+}
+.loader-2::before,
+.loader-2::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  margin: auto;
+  width: 50%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 2px solid;
+  box-sizing: content-box;
+  transform-origin: 50% calc(100% - 4px);
+  animation: inherit;
+}
+.loader-2::after {
+  inset:auto 0 calc(100% + 2px);
+  animation-duration: 0.5s;
+  animation-direction: reverse;
+  transform-origin: 50% calc(200% - 2px);
+}
+@keyframes l2_custom {
+  100% {transform:rotate(1turn)}
+}
+
+.loader-3 {
+  width: 50px;
+  aspect-ratio: 1;
+  border: 2px solid;
+  color: currentColor;
+  --c:conic-gradient(from -90deg at calc(100% - 2px) calc(100% - 2px),#0000 0 90deg,currentColor 0);
+  background: var(--c),var(--c);
+  background-size: 16px 16px;
+  background-position: 0 0;
+  animation: l3 1s infinite;
+}
+@keyframes l3{
+  100% {background-position: -16px -16px,16px 16px}
+}
+
+.loader-4 {
+  width: 50px;
+  aspect-ratio: 1;
+  color: currentColor;
+  border: 2px solid;
+  box-sizing: border-box;
+  --c:radial-gradient(farthest-side,#0000 calc(100% - 3px),currentColor calc(100% - 2px) 98%,#0000);
+  background: var(--c),var(--c);
+  background-size: 23px 23px;
+  background-position: 0 0,12px 12px;
+  animation: l4 1s infinite;
+}
+@keyframes l4{
+  100% {background-position: -23px 0px,12px 35px}
+}
+
+.loader-5 {
+  width: 50px;
+  aspect-ratio: 1.154;
+  display: grid;
+  color: currentColor;
+  background:
+    linear-gradient(to bottom left ,#0000 calc(50% - 1px),currentColor 0 calc(50% + 1px),#0000 0) right/50% 100%,
+    linear-gradient(to bottom right,#0000 calc(50% - 1px),currentColor 0 calc(50% + 1px),#0000 0) left /50% 100%,
+    linear-gradient(currentColor 0 0) bottom/100% 2px;
+  background-repeat: no-repeat;
+  transform-origin: 50% 66%;
+  animation: l5 4s infinite linear;
+}
+.loader-5::before,
+.loader-5::after {
+  content: "";
+  grid-area: 1/1;
+  background: inherit;
+  transform-origin: inherit;
+  animation: inherit;
+}
+.loader-5::after {
+  animation-duration: 2s;
+}
+@keyframes l5{
+  100% {transform:rotate(1turn)}
+}
+
+.loader-6 {
+  width: 50px;
+  aspect-ratio: 1;
+  display: grid;
+  color: currentColor;
+  background:
+    linear-gradient(90deg,currentColor 2px,#0000 0 calc(100% - 2px),currentColor 0) center/100% 14px,
+    linear-gradient(0deg, currentColor 2px,#0000 0 calc(100% - 2px),currentColor 0) center/14px 100%,
+    linear-gradient(currentColor 0 0) center/100% 2px,
+    linear-gradient(currentColor 0 0) center/2px 100%;
+  background-repeat: no-repeat;
+  animation: l6 4s infinite linear;
+}
+.loader-6::before,
+.loader-6::after {
+  content: "";
+  grid-area: 1/1;
+  background: inherit;
+  transform-origin: inherit;
+  animation: inherit;
+}
+.loader-6::after {
+  animation-duration: 2s;
+}
+@keyframes l6{
+  100% {transform:rotate(1turn)}
+}
+
+.loader-7 {
+  width: 50px;
+  aspect-ratio: 1;
+  color: currentColor;
+  border: 2px solid;
+  box-sizing: border-box;
+  background:
+    repeating-conic-gradient(#0000 0 90deg,currentColor 0 180deg),
+    repeating-conic-gradient(currentColor 0 90deg,#0000 0 180deg);
+  background-size: 16px 16px;
+  background-position: 0 0;
+  animation: l7 2s infinite;
+}
+@keyframes l7{
+  100% {background-position: 0px 32px,16px 0px}
+}
+
+.loader-8 {
+  width: 50px;
+  aspect-ratio: 1;
+  color: currentColor;
+  border: 2px solid;
+  box-sizing: border-box;
+  background:
+    radial-gradient(farthest-side,currentColor 90%,#0000),
+    radial-gradient(farthest-side,#0000 90%,currentColor);
+  background-size: 16px 16px;
+  background-position: 0 0;
+  animation: l8 2s infinite;
+}
+@keyframes l8{
+  100% {background-position: 0px 32px,-16px 0}
+}
+
+.loader-9 {
+  width: 50px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  color: currentColor;
+  background: repeating-conic-gradient(#0000,currentColor 1deg 18deg,#0000 20deg 36deg);
+  animation: l9 4s infinite linear;
+  position: relative;
+}
+.loader-9::before{
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  inset:0;
+  background: inherit;
+  animation: inherit;
+}
+@keyframes l9{
+  100% {transform:rotate(.5turn)}
+}
+
+.loader-10 {
+  width: 50px;
+  aspect-ratio: 1;
+  display: grid;
+  color: currentColor;
+}
+.loader-10::before,
+.loader-10::after{
+  content: "";
+  grid-area: 1/1;
+  border-radius: 50%;
+  background: repeating-conic-gradient(#0000,currentColor 1deg 18deg,#0000 20deg 36deg);
+  -webkit-mask:repeating-radial-gradient(farthest-side,#000 0 10%,#0000 0 20%);
+  mask:repeating-radial-gradient(farthest-side,#000 0 10%,#0000 0 20%);
+  animation: l10 4s infinite linear;
+}
+.loader-10::after{
+  -webkit-mask:repeating-radial-gradient(farthest-side,#0000 0 10%,#000 0 20%);
+  mask:repeating-radial-gradient(farthest-side,#0000 0 10%,#000 0 20%);
+  animation-direction: reverse;
+}
+@keyframes l10 {
+  100% {transform:rotate(.5turn)}
+}
+
+.loader-11 {
+  width: 50px;
+  aspect-ratio: 1;
+  color: currentColor;
+  border: 2px solid;
+  box-sizing: border-box;
+  border-radius: 50%;
+  display: grid;
+  animation: l11 1.5s infinite linear;
+  transform-origin: 50% 80%;
+}
+.loader-11:before,
+.loader-11:after {
+  content: "";
+  grid-area: 1/1;
+  border: inherit;
+  border-radius: 50%;
+  animation: inherit;
+  animation-duration: 1s;
+  transform-origin: inherit;
+}
+.loader-11:after {
+  --s:-1;
+}
+@keyframes l11 {
+   100% {transform:rotate(calc(var(--s,1)*1turn))}
+}
+
+.loader-12 {
+  width: 60px;
+  height: 25px;
+  color: currentColor;
+  border: 2px solid;
+  box-sizing: border-box;
+  border-radius: 50%;
+  display: grid;
+  animation: l12 2s infinite linear;
+}
+.loader-12:before,
+.loader-12:after {
+  content: "";
+  grid-area: 1/1;
+  border: inherit;
+  border-radius: 50%;
+  animation: inherit;
+  animation-duration: 3s;
+}
+.loader-12:after {
+  --s:-1;
+}
+@keyframes l12 {
+   100% {transform:rotate(calc(var(--s,1)*1turn))}
+}
+
+.loader-13 {
+  width: 60px;
+  height: 30px;
+  display: flex;
+  color: currentColor;
+  --c:#0000 calc(100% - 5px),currentColor calc(100% - 4px) 96%,#0000;
+  background:
+    radial-gradient(farthest-side at bottom,var(--c)) 0 0,
+    radial-gradient(farthest-side at top   ,var(--c)) 100% 100%;
+  background-size:calc(50% + 2px) 50%;
+  background-repeat: no-repeat;
+  animation: l13 2s infinite linear;
+}
+.loader-13:before {
+  content: "";
+  flex: 1;
+  background: inherit;
+  transform: rotate(90deg);
+}
+@keyframes l13 {
+   100% {transform:rotate(1turn)}
+}
+
+.loader-14 {
+  width: 60px;
+  height: 30px;
+  display: grid;
+  color: currentColor;
+  --c: #0000 calc(100% - 5px),currentColor calc(100% - 4px) 96%,#0000;
+  background:
+    radial-gradient(farthest-side at bottom,var(--c)) 0 0,
+    radial-gradient(farthest-side at top   ,var(--c)) 100% 100%;
+  background-size: calc(50% + 2px) 50%;
+  background-repeat: no-repeat;
+  animation: l14 1.5s infinite linear;
+}
+.loader-14:before,
+.loader-14:after {
+  content: "";
+  grid-area: 1/1;
+  background: inherit;
+  animation: inherit;
+  animation-duration: 2s;
+}
+.loader-14:after {
+  --s:-1;
+}
+@keyframes l14 {
+   100% {transform:rotate(calc(var(--s,1)*1turn))}
+}
+
+.loader-15 {
+  width: 50px;
+  aspect-ratio: 1;
+  color: currentColor;
+  border: 2px solid;
+  box-sizing: border-box;
+  --c:conic-gradient(from 180deg at 50% calc(100% - 2px),currentColor 90deg, #0000 0);
+  background: var(--c),var(--c);
+  background-position: 0 0,8px 0;
+  background-size: 16px 9.6px;
+  animation: l15 1s infinite;
+}
+@keyframes l15 {
+  100% {background-position: 0 -9.6px,8px 9.6px}
+}
+
+.loader-16 {
+  width: 50px;
+  aspect-ratio: 1;
+  color: currentColor;
+  position: relative;
+  overflow: hidden;
+  border: 2px solid;
+}
+.loader-16::before {
+  content: "";
+  position: absolute;
+  inset: -48px;
+  --c:conic-gradient(from 180deg at 50% calc(100% - 2px),currentColor 90deg, #0000 0);
+  background: var(--c),var(--c);
+  background-position: 0 0,8px 0;
+  background-size: 16px 9.6px;
+  animation: l16 2s infinite;
+}
+@keyframes l16 {
+  50%  {background-position: 0 -9.6px ,8px 9.6px; transform:rotate(90deg)}
+  100% {background-position: 0 -19.2px,8px 19.2px;transform:rotate(180deg)}
+}
+
+.loader-17 {
+  width: 30px;
+  aspect-ratio: .577;
+  color: currentColor;
+  display: grid;
+  background:
+    linear-gradient(currentColor 0 0) top   /100% 1px,
+    linear-gradient(currentColor 0 0) bottom/100% 1px,
+    linear-gradient(to bottom right, #0000 calc(50% - 2px),currentColor calc(50% - 1px),#0000 50%) top/100% calc(100% + 2px),
+    linear-gradient(to bottom left , #0000 calc(50% - 2px),currentColor calc(50% - 1px),#0000 50%) top/100% calc(100% + 2px); 
+  background-repeat: no-repeat;
+  animation: l17 4s infinite linear;
+}
+.loader-17::before,
+.loader-17::after {
+  content: "";
+  grid-area: 1/1;
+  background: inherit;
+  border:inherit;
+  animation: inherit;
+}
+.loader-17::after {
+  animation-duration: 2s;
+}
+@keyframes l17 {
+  100% {transform: rotate(1turn)}
+}
+
+.loader-18 {
+  width: 25px;
+  height: 50px;
+  display: grid;
+  color: currentColor;
+  background:
+    linear-gradient(currentColor 0 0) top/100% 2px,
+    radial-gradient(farthest-side at  top, #0000 calc(100% - 2px),currentColor calc(100% - 1px) ,#0000) top,
+    linear-gradient(currentColor 0 0) bottom/100% 2px,
+    radial-gradient(farthest-side at  bottom, #0000 calc(100% - 2px),currentColor calc(100% - 1px) ,#0000) bottom;
+  background-size: 100% 1px,100% 50%; 
+  background-repeat: no-repeat;
+  animation: l18 4s infinite linear;
+}
+.loader-18::before,
+.loader-18::after {
+  content: "";
+  grid-area: 1/1;
+  background: inherit;
+  border: inherit;
+  animation: inherit;
+}
+.loader-18::after {
+  animation-duration: 2s;
+}
+@keyframes l18 {
+  100% {transform: rotate(1turn)}
+}
+
+.loader-19 {
+  width: 50px;
+  aspect-ratio: 1;
+  display: grid;
+  color: currentColor;
+}
+.loader-19::before,
+.loader-19::after {
+  content: "";
+  grid-area: 1/1;
+  border-radius: 50%;
+  background: repeating-radial-gradient(farthest-side,#0000 0%,currentColor 1% 10%,#0000 11% 30%);
+  -webkit-mask: repeating-conic-gradient(#000 0 36deg,#0000 0 72deg);
+  mask: repeating-conic-gradient(#000 0 36deg,#0000 0 72deg);
+  animation: l19 4s infinite linear;
+}
+.loader-19::after {
+  -webkit-mask: repeating-conic-gradient(#0000 0 36deg,#000 0 72deg);
+  mask: repeating-conic-gradient(#0000 0 36deg,#000 0 72deg);
+  animation-direction: reverse;
+}
+@keyframes l19 {
+  100% {transform:rotate(1turn)}
+}
+
+.loader-20 {
+  --b: 5px; 
+  width: calc(12*var(--b));
+  aspect-ratio: 1;
+  border-radius: 50%;
+  color: currentColor;
+  background: 
+    repeating-radial-gradient(calc(2*var(--b)) at top,#0000 -1px,currentColor 0 calc(50% - 1px),#0000 50% calc(100% - 1px)) calc(50% + var(--b)) 100%, 
+    repeating-radial-gradient(calc(2*var(--b)) at bottom,currentColor -1px,#0000 0 calc(50% - 1px),currentColor 50% calc(100% - 1px)) 50% 0;
+  background-size: 150% 50%;
+  background-repeat: no-repeat;
+  -webkit-mask: 
+    radial-gradient(calc(1.5*var(--b)) at calc(100% - var(--b)/2) 0, #0000 calc(100%/3), #000 calc(100%/3 + 1px) 110%, #0000 0) calc(50% + var(--b)/2) 
+     100%/calc(3*var(--b)) 50% exclude no-repeat, 
+    conic-gradient(#000 0 0);
+  mask: 
+    radial-gradient(calc(1.5*var(--b)) at calc(100% - var(--b)/2) 0, #0000 calc(100%/3), #000 calc(100%/3 + 1px) 110%, #0000 0) calc(50% + var(--b)/2) 
+     100%/calc(3*var(--b)) 50% exclude no-repeat, 
+    conic-gradient(#000 0 0);
+  animation: l20 1s infinite linear;
+}
+@keyframes l20 {
+  100% {transform: rotate(1turn)}
+}
+
+/* 3D Pop out custom shadows & neo-brutalist style overrides */
+.shadow-pop-card-indigo {
+  box-shadow: 4px 4px 0px 0px #4f46e5;
+  border: 2.5px solid #4f46e5;
+  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.15);
+}
+.shadow-pop-card-indigo:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 7px 7px 0px 0px #4f46e5;
+}
+
+.shadow-pop-card-slate {
+  box-shadow: 4px 4px 0px 0px #0f172a;
+  border: 2.5px solid #0f172a;
+  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.15);
+}
+.shadow-pop-card-slate:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 7px 7px 0px 0px #0f172a;
+}
+.dark .shadow-pop-card-slate {
+  box-shadow: 4px 4px 0px 0px #f1f5f9;
+  border: 2.5px solid #e2e8f0;
+}
+.dark .shadow-pop-card-slate:hover {
+  box-shadow: 7px 7px 0px 0px #f1f5f9;
+}
+
+.shadow-pop-card-emerald {
+  box-shadow: 4px 4px 0px 0px #10b981;
+  border: 2.5px solid #10b981;
+  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.15);
+}
+.shadow-pop-card-emerald:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 7px 7px 0px 0px #10b981;
+}
+
+.shadow-pop-card-amber {
+  box-shadow: 4px 4px 0px 0px #f59e0b;
+  border: 2.5px solid #f59e0b;
+  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.15);
+}
+.shadow-pop-card-amber:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 7px 7px 0px 0px #f59e0b;
+}
+
+.shadow-pop-btn {
+  box-shadow: 3px 3px 0px 0px #0f172a;
+  border: 2px solid #0f172a;
+  transition: all 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.1);
+}
+.shadow-pop-btn:hover:not(:disabled) {
+  transform: translate(-1.5px, -1.5px);
+  box-shadow: 5px 5px 0px 0px #0f172a;
+}
+.shadow-pop-btn:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0px 0px #0f172a;
+}
+.dark .shadow-pop-btn {
+  box-shadow: 3px 3px 0px 0px #e2e8f0;
+  border: 2px solid #e2e8f0;
+}
+.dark .shadow-pop-btn:hover:not(:disabled) {
+  box-shadow: 5px 5px 0px 0px #e2e8f0;
+}
+.dark .shadow-pop-btn:active:not(:disabled) {
+  box-shadow: 1px 1px 0px 0px #e2e8f0;
+}
+
+.shadow-pop-btn-indigo {
+  box-shadow: 3px 3px 0px 0px #4f46e5;
+  border: 2px solid #4f46e5;
+  transition: all 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.1);
+}
+.shadow-pop-btn-indigo:hover:not(:disabled) {
+  transform: translate(-1.5px, -1.5px);
+  box-shadow: 5px 5px 0px 0px #4f46e5;
+}
+.shadow-pop-btn-indigo:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0px 0px #4f46e5;
+}
+
+.shadow-pop-btn-emerald {
+  box-shadow: 3px 3px 0px 0px #10b981;
+  border: 2px solid #10b981;
+  transition: all 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.1);
+}
+.shadow-pop-btn-emerald:hover:not(:disabled) {
+  transform: translate(-1.5px, -1.5px);
+  box-shadow: 5px 5px 0px 0px #10b981;
+}
+.shadow-pop-btn-emerald:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0px 0px #10b981;
+}
+
+.shadow-pop-btn-rose {
+  box-shadow: 3px 3px 0px 0px #f43f5e;
+  border: 2px solid #f43f5e;
+  transition: all 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.1);
+}
+.shadow-pop-btn-rose:hover:not(:disabled) {
+  transform: translate(-1.5px, -1.5px);
+  box-shadow: 5px 5px 0px 0px #f43f5e;
+}
+.shadow-pop-btn-rose:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0px 0px #f43f5e;
+}
+
+.shadow-pop-badge {
+  box-shadow: 1.5px 1.5px 0px 0px #0f172a;
+  border: 1.5px solid #0f172a;
+}
+.dark .shadow-pop-badge {
+  box-shadow: 1.5px 1.5px 0px 0px #e2e8f0;
+  border: 1.5px solid #cbd5e1;
+}
+
+.shadow-pop-input {
+  border: 2px solid #cbd5e1;
+  transition: all 0.2s ease;
+}
+.shadow-pop-input:focus {
+  border-color: #4f46e5;
+  box-shadow: 3px 3px 0px 0px #4f46e5;
+  outline: none;
+}
+.dark .shadow-pop-input {
+  border-color: #334155;
+}
+.dark .shadow-pop-input:focus {
+  border-color: #818cf8;
+  box-shadow: 3px 3px 0px 0px #818cf8;
+}
+
+
+
+
+
+
+/* Neon/EDM/House background for dark mode */
+html.dark body {
+  background-color: #030014;
+  background-image: 
+    radial-gradient(circle at 15% 50%, rgba(99, 102, 241, 0.12) 0%, transparent 45%),
+    radial-gradient(circle at 85% 30%, rgba(236, 72, 153, 0.12) 0%, transparent 45%),
+    radial-gradient(circle at 50% 80%, rgba(14, 165, 233, 0.12) 0%, transparent 45%),
+    url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.02'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  background-attachment: fixed;
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 1.5cm;
+  }
+  
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    background-color: white !important;
+  }
+
+  /* Hide navigation, sidebar, headers, footers and any action buttons */
+  header, footer, nav, aside, 
+  .no-print,
+  button,
+  .print-hidden,
+  [role="navigation"] {
+    display: none !important;
+  }
+
+  /* Reset layout for print */
+  .min-h-screen {
+    min-height: auto !important;
+  }
+
+  /* Optimize tables for print */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    page-break-inside: auto;
+  }
+  
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+  
+  thead {
+    display: table-header-group;
+  }
+  
+  tfoot {
+    display: table-footer-group;
+  }
+  
+  td, th {
+    border: 1px solid #e2e8f0 !important;
+    padding: 8px 12px !important;
+    text-align: left !important;
+    color: #0f172a !important;
+    background-color: transparent !important;
+  }
+
+  th {
+    background-color: #f8fafc !important;
+    font-weight: bold !important;
+  }
+
+  /* Fix text contrast */
+  * {
+    color: black !important;
+    text-shadow: none !important;
+    box-shadow: none !important;
+  }
+
+  /* Backgrounds should print if they represent status */
+  .bg-emerald-50, .bg-rose-50, .bg-amber-50, .bg-slate-50 {
+    background-color: transparent !important;
+  }
+  
+  .print-break-before {
+    page-break-before: always;
+  }
+}

@@ -40,6 +40,7 @@ const FRAGMENT_SHADER_SOURCE = `
   uniform vec3 u_aurora_col1;
   uniform vec3 u_aurora_col2;
   uniform vec3 u_aurora_col3;
+  uniform vec2 u_mouse;
 
   float hash(vec2 p) {
       return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
@@ -112,7 +113,19 @@ const FRAGMENT_SHADER_SOURCE = `
       float t = u_time * u_speed;
       vec2 st = gl_FragCoord.xy / u_resolution.xy * 2.0 - 1.0;
       st.x *= u_resolution.x / u_resolution.y;
+
+      // Mouse interactive position matching st aspect ratio
+      vec2 mouse_st = u_mouse * 2.0 - 1.0;
+      mouse_st.x *= u_resolution.x / u_resolution.y;
+
+      float distToMouseRaw = length(st - mouse_st);
+      
       st *= 5.0;
+
+      // Cursor ambient soft neon illumination (extremely tiny and soft neon bead of light)
+      float cursorGlow = 0.012 / (distToMouseRaw * distToMouseRaw * 150.0 + 0.06);
+      float cursorBleed = 0.003 / (distToMouseRaw * 8.0 + 0.04);
+      vec3 cursorColor = mix(u_neon_color, u_neon_color2, 0.5 + 0.5 * sin(u_time * 1.5)) * (cursorGlow + cursorBleed * 0.2) * u_neon_intensity;
 
       float horizonBlend = pow(clamp(1.0 - st.y / 5.0, 0.0, 1.0), 2.5);
       
@@ -209,6 +222,9 @@ const FRAGMENT_SHADER_SOURCE = `
 
       col = mix(col, waterCol, waterMask);
 
+      // Add the glowing interactive cursor color on top
+      col += cursorColor * (0.85 + 0.15 * sin(u_time * 4.0));
+
       gl_FragColor = vec4(col, 1.0);
   }
 `;
@@ -252,8 +268,73 @@ const hexToRgb = (hex: string): [number, number, number] => {
   return [r, g, b];
 };
 
+const hexToHue = (hex: string): number => {
+  const cleanHex = hex.startsWith('#') ? hex.slice(1) : hex;
+  if (cleanHex.length < 6) return 0;
+  const r = parseInt(cleanHex.slice(0, 2), 16) / 255;
+  const g = parseInt(cleanHex.slice(2, 4), 16) / 255;
+  const b = parseInt(cleanHex.slice(4, 6), 16) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  let h = 0;
+  if (max !== min) {
+    const d = max - min;
+    if (max === r) {
+      h = (g - b) / d + (g < b ? 6 : 0);
+    } else if (max === g) {
+      h = (b - r) / d + 2;
+    } else if (max === b) {
+      h = (r - g) / d + 4;
+    }
+    h /= 6;
+  }
+  return Math.round(h * 360);
+};
+
+const hueToHex = (h: number): string => {
+  const s = 1.0;
+  const l = 0.5;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+  let r = 0, g = 0, b = 0;
+  if (h >= 0 && h < 60) {
+    r = c; g = x; b = 0;
+  } else if (h >= 60 && h < 120) {
+    r = x; g = c; b = 0;
+  } else if (h >= 120 && h < 180) {
+    r = 0; g = c; b = x;
+  } else if (h >= 180 && h < 240) {
+    r = 0; g = x; b = c;
+  } else if (h >= 240 && h < 300) {
+    r = x; g = 0; b = c;
+  } else if (h >= 300 && h <= 360) {
+    r = c; g = 0; b = x;
+  }
+  const toHex = (n: number) => {
+    const hexVal = Math.round((n + m) * 255).toString(16);
+    return hexVal.padStart(2, '0');
+  };
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+};
+
 export const WebGLBackground: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // Mouse position tracking for beautiful interaction
+  const mouseRef = useRef({ x: 0.5, y: 0.5 });
+  const targetMouseRef = useRef({ x: 0.5, y: 0.5 });
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      targetMouseRef.current = {
+        x: e.clientX / window.innerWidth,
+        y: 1.0 - (e.clientY / window.innerHeight)
+      };
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => window.removeEventListener('mousemove', handleMouseMove);
+  }, []);
 
   // Load custom state from localstorage
   const [preset, setPreset] = useState<string>(() => localStorage.getItem('bg_preset') || 'cyan_ice');
@@ -274,6 +355,7 @@ export const WebGLBackground: React.FC = () => {
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'preset' | 'custom' | 'aurora'>('preset');
+  const [activeAuroraColorIdx, setActiveAuroraColorIdx] = useState<1 | 2 | 3>(1);
 
   // Sync isDarkMode dynamically by observing document element classList
   useEffect(() => {
@@ -419,6 +501,7 @@ export const WebGLBackground: React.FC = () => {
     const auroraCol1Location = gl.getUniformLocation(program, 'u_aurora_col1');
     const auroraCol2Location = gl.getUniformLocation(program, 'u_aurora_col2');
     const auroraCol3Location = gl.getUniformLocation(program, 'u_aurora_col3');
+    const mouseLocation = gl.getUniformLocation(program, 'u_mouse');
 
     let animationFrameId: number;
 
@@ -443,6 +526,14 @@ export const WebGLBackground: React.FC = () => {
       gl.useProgram(program);
       gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
       gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+      // Smooth mouse interpolation (lerp)
+      mouseRef.current.x += (targetMouseRef.current.x - mouseRef.current.x) * 0.08;
+      mouseRef.current.y += (targetMouseRef.current.y - mouseRef.current.y) * 0.08;
+
+      if (mouseLocation) {
+        gl.uniform2f(mouseLocation, mouseRef.current.x, mouseRef.current.y);
+      }
 
       const [r1, g1, b1] = hexToRgb(primaryColor);
       const [r2, g2, b2] = hexToRgb(secondaryColor);
@@ -576,8 +667,8 @@ export const WebGLBackground: React.FC = () => {
         }}
       />
 
-      {/* Floating Configuration Widget */}
-      <div className="fixed bottom-6 right-6 z-[60] flex flex-col items-end gap-3 font-sans">
+      {/* Floating Configuration Widget - Shifted to bottom-left to avoid chatbot and toast collisions */}
+      <div className="fixed bottom-6 left-6 z-[60] flex flex-col items-start gap-3 font-sans no-print">
         
         {/* Expanded Panel */}
         <AnimatePresence>
@@ -657,40 +748,129 @@ export const WebGLBackground: React.FC = () => {
 
               {/* Custom Sliders & Color Pickers */}
               {activeTab === 'custom' && (
-                <div className="space-y-3.5 max-h-56 overflow-y-auto pr-1">
+                <div className="space-y-3.5 max-h-[17.5rem] overflow-y-auto pr-1">
                   
-                  {/* Color Pickers */}
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1">
-                      <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">Màu Neon 1</span>
-                      <div className="flex items-center gap-1.5 p-1.5 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-100 dark:border-slate-800">
+                  {/* Custom Neon 1 */}
+                  <div className="space-y-2 p-2.5 bg-slate-50/50 dark:bg-slate-950/40 rounded-2xl border border-slate-100/80 dark:border-slate-800/80">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider">Màu Neon 1 (Chủ Đạo)</span>
+                      <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-lg px-2 py-0.5 shadow-xs">
+                        <span className="w-2.5 h-2.5 rounded-full border border-white/20 shrink-0" style={{ backgroundColor: primaryColor }} />
                         <input 
-                          type="color" 
-                          value={primaryColor} 
+                          type="text"
+                          value={primaryColor}
                           onChange={(e) => {
                             setPreset('custom');
                             setPrimaryColor(e.target.value);
                           }}
-                          className="w-6 h-6 rounded-lg cursor-pointer border-0 p-0"
+                          className="w-14 text-center text-[9px] font-mono uppercase bg-transparent border-0 focus:outline-none p-0 text-slate-600 dark:text-slate-400 font-bold"
                         />
-                        <span className="text-[10px] font-mono uppercase">{primaryColor}</span>
                       </div>
                     </div>
 
+                    {/* Quick Swatches */}
+                    <div className="flex gap-2 justify-center py-0.5">
+                      {['#00f2fe', '#ff007f', '#00f5d4', '#ff4500', '#ae26ed', '#ffeb3b'].map((hex) => {
+                        const isSelected = primaryColor.toLowerCase() === hex.toLowerCase();
+                        return (
+                          <button
+                            key={hex}
+                            onClick={() => {
+                              setPreset('custom');
+                              setPrimaryColor(hex);
+                            }}
+                            className={`w-5 h-5 rounded-full border cursor-pointer transition-all hover:scale-110 active:scale-90 ${
+                              isSelected ? 'border-slate-700 dark:border-white ring-2 ring-indigo-500/30 scale-110' : 'border-white/20 shadow-xs'
+                            }`}
+                            style={{ backgroundColor: hex }}
+                            title={hex}
+                          />
+                        );
+                      })}
+                    </div>
+
+                    {/* Hue Slider */}
                     <div className="space-y-1">
-                      <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">Màu Neon 2</span>
-                      <div className="flex items-center gap-1.5 p-1.5 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-100 dark:border-slate-800">
+                      <div className="flex justify-between text-[8px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider leading-none">
+                        <span>Quang phổ Màu 1</span>
+                        <span>{hexToHue(primaryColor)}°</span>
+                      </div>
+                      <input 
+                        type="range"
+                        min="0"
+                        max="360"
+                        value={hexToHue(primaryColor)}
+                        onChange={(e) => {
+                          setPreset('custom');
+                          setPrimaryColor(hueToHex(Number(e.target.value)));
+                        }}
+                        className="w-full h-2 rounded-full cursor-pointer appearance-none outline-none accent-slate-800 dark:accent-white"
+                        style={{
+                          background: 'linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)'
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Custom Neon 2 */}
+                  <div className="space-y-2 p-2.5 bg-slate-50/50 dark:bg-slate-950/40 rounded-2xl border border-slate-100/80 dark:border-slate-800/80">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider">Màu Neon 2 (Phụ Trợ)</span>
+                      <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-lg px-2 py-0.5 shadow-xs">
+                        <span className="w-2.5 h-2.5 rounded-full border border-white/20 shrink-0" style={{ backgroundColor: secondaryColor }} />
                         <input 
-                          type="color" 
-                          value={secondaryColor} 
+                          type="text"
+                          value={secondaryColor}
                           onChange={(e) => {
                             setPreset('custom');
                             setSecondaryColor(e.target.value);
                           }}
-                          className="w-6 h-6 rounded-lg cursor-pointer border-0 p-0"
+                          className="w-14 text-center text-[9px] font-mono uppercase bg-transparent border-0 focus:outline-none p-0 text-slate-600 dark:text-slate-400 font-bold"
                         />
-                        <span className="text-[10px] font-mono uppercase">{secondaryColor}</span>
                       </div>
+                    </div>
+
+                    {/* Quick Swatches */}
+                    <div className="flex gap-2 justify-center py-0.5">
+                      {['#4facfe', '#9b5de5', '#10b981', '#f9d976', '#0575e6', '#ff8c00'].map((hex) => {
+                        const isSelected = secondaryColor.toLowerCase() === hex.toLowerCase();
+                        return (
+                          <button
+                            key={hex}
+                            onClick={() => {
+                              setPreset('custom');
+                              setSecondaryColor(hex);
+                            }}
+                            className={`w-5 h-5 rounded-full border cursor-pointer transition-all hover:scale-110 active:scale-90 ${
+                              isSelected ? 'border-slate-700 dark:border-white ring-2 ring-indigo-500/30 scale-110' : 'border-white/20 shadow-xs'
+                            }`}
+                            style={{ backgroundColor: hex }}
+                            title={hex}
+                          />
+                        );
+                      })}
+                    </div>
+
+                    {/* Hue Slider */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[8px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider leading-none">
+                        <span>Quang phổ Màu 2</span>
+                        <span>{hexToHue(secondaryColor)}°</span>
+                      </div>
+                      <input 
+                        type="range"
+                        min="0"
+                        max="360"
+                        value={hexToHue(secondaryColor)}
+                        onChange={(e) => {
+                          setPreset('custom');
+                          setSecondaryColor(hueToHex(Number(e.target.value)));
+                        }}
+                        className="w-full h-2 rounded-full cursor-pointer appearance-none outline-none accent-slate-800 dark:accent-white"
+                        style={{
+                          background: 'linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)'
+                        }}
+                      />
                     </div>
                   </div>
 
@@ -807,51 +987,87 @@ export const WebGLBackground: React.FC = () => {
                   </div>
 
                   {/* Aurora Custom Color Pickers */}
-                  <div className="space-y-1.5 border-t border-slate-100 dark:border-slate-800/80 pt-2.5">
+                  <div className="space-y-2 border-t border-slate-100 dark:border-slate-800/80 pt-2.5">
                     <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">Tự thiết lập màu cực quang</span>
-                    <div className="grid grid-cols-3 gap-1.5">
-                      <div className="space-y-1 flex flex-col items-center">
-                        <span className="text-[9px] text-slate-400 dark:text-slate-500 font-semibold uppercase">Màu 1</span>
-                        <div className="flex items-center gap-1 bg-slate-50 dark:bg-slate-950 p-1 rounded-xl border border-slate-150 dark:border-slate-800 w-full justify-center">
-                          <input 
-                            type="color" 
-                            value={auroraCol1} 
-                            onChange={(e) => {
-                              setAuroraPreset('custom');
-                              setAuroraCol1(e.target.value);
-                            }}
-                            className="w-5 h-5 rounded-md cursor-pointer border-0 p-0"
-                          />
-                        </div>
+                    
+                    {/* Color Swatches selection */}
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { label: 'Màu 1', color: auroraCol1, idx: 1 as const },
+                        { label: 'Màu 2', color: auroraCol2, idx: 2 as const },
+                        { label: 'Màu 3', color: auroraCol3, idx: 3 as const },
+                      ].map((item) => {
+                        const isSelected = activeAuroraColorIdx === item.idx;
+                        return (
+                          <button
+                            type="button"
+                            key={item.idx}
+                            onClick={() => setActiveAuroraColorIdx(item.idx)}
+                            className={`flex flex-col items-center gap-1 p-1.5 rounded-xl border text-[9px] font-bold cursor-pointer transition-all ${
+                              isSelected 
+                                ? 'border-emerald-500 bg-emerald-50/20 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 shadow-xs' 
+                                : 'border-slate-100 dark:border-slate-800/80 hover:bg-slate-50/50'
+                            }`}
+                          >
+                            <span>{item.label}</span>
+                            <div 
+                              className={`w-6 h-6 rounded-lg border shadow-xs transition-all ${
+                                isSelected ? 'scale-110 ring-2 ring-emerald-500/30 border-emerald-500' : 'border-white/20'
+                              }`} 
+                              style={{ backgroundColor: item.color }} 
+                            />
+                            <span className="font-mono text-[8px] uppercase tracking-tighter opacity-70">{item.color}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Integrated Slider for Selected Aurora Color */}
+                    <div className="space-y-1.5 bg-slate-50/50 dark:bg-slate-950/40 p-2 rounded-xl border border-slate-100/60 dark:border-slate-800/40 mt-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase">
+                          Sửa Màu {activeAuroraColorIdx}
+                        </span>
+                        <input 
+                          type="text"
+                          value={
+                            activeAuroraColorIdx === 1 ? auroraCol1 :
+                            activeAuroraColorIdx === 2 ? auroraCol2 :
+                            auroraCol3
+                          }
+                          onChange={(e) => {
+                            setAuroraPreset('custom');
+                            const val = e.target.value;
+                            if (activeAuroraColorIdx === 1) setAuroraCol1(val);
+                            else if (activeAuroraColorIdx === 2) setAuroraCol2(val);
+                            else setAuroraCol3(val);
+                          }}
+                          className="w-14 text-center text-[9px] font-mono uppercase bg-transparent border-0 border-b border-slate-200 dark:border-slate-700 focus:border-emerald-500 outline-none p-0 text-slate-600 dark:text-slate-400 font-bold"
+                        />
                       </div>
-                      <div className="space-y-1 flex flex-col items-center">
-                        <span className="text-[9px] text-slate-400 dark:text-slate-500 font-semibold uppercase">Màu 2</span>
-                        <div className="flex items-center gap-1 bg-slate-50 dark:bg-slate-950 p-1 rounded-xl border border-slate-150 dark:border-slate-800 w-full justify-center">
-                          <input 
-                            type="color" 
-                            value={auroraCol2} 
-                            onChange={(e) => {
-                              setAuroraPreset('custom');
-                              setAuroraCol2(e.target.value);
-                            }}
-                            className="w-5 h-5 rounded-md cursor-pointer border-0 p-0"
-                          />
-                        </div>
-                      </div>
-                      <div className="space-y-1 flex flex-col items-center">
-                        <span className="text-[9px] text-slate-400 dark:text-slate-500 font-semibold uppercase">Màu 3</span>
-                        <div className="flex items-center gap-1 bg-slate-50 dark:bg-slate-950 p-1 rounded-xl border border-slate-150 dark:border-slate-800 w-full justify-center">
-                          <input 
-                            type="color" 
-                            value={auroraCol3} 
-                            onChange={(e) => {
-                              setAuroraPreset('custom');
-                              setAuroraCol3(e.target.value);
-                            }}
-                            className="w-5 h-5 rounded-md cursor-pointer border-0 p-0"
-                          />
-                        </div>
-                      </div>
+
+                      {/* Spectrum Hue Slider */}
+                      <input 
+                        type="range"
+                        min="0"
+                        max="360"
+                        value={hexToHue(
+                          activeAuroraColorIdx === 1 ? auroraCol1 :
+                          activeAuroraColorIdx === 2 ? auroraCol2 :
+                          auroraCol3
+                        )}
+                        onChange={(e) => {
+                          setAuroraPreset('custom');
+                          const nextHex = hueToHex(Number(e.target.value));
+                          if (activeAuroraColorIdx === 1) setAuroraCol1(nextHex);
+                          else if (activeAuroraColorIdx === 2) setAuroraCol2(nextHex);
+                          else setAuroraCol3(nextHex);
+                        }}
+                        className="w-full h-1.5 rounded-full cursor-pointer appearance-none outline-none accent-slate-800 dark:accent-white"
+                        style={{
+                          background: 'linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)'
+                        }}
+                      />
                     </div>
                   </div>
                 </div>

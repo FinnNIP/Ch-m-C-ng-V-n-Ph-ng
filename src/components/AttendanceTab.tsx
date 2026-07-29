@@ -1,8 +1,11 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Employee, TimeLog } from '../types';
 import { addTimeLog, updateTimeLog, deleteTimeLog, saveDayAttendance } from '../sheets';
 import { getVietnamHolidayName } from '../holidays';
+import { ConfettiEffect } from './ConfettiEffect';
 import { motion, AnimatePresence } from 'motion/react';
+import { formatGuestName, getEmployeeDisplayName } from '../utils/nameUtils';
+import { RandomLoader } from './RandomLoader';
 import { 
   Clock, 
   CheckCircle2, 
@@ -33,9 +36,11 @@ interface AttendanceTabProps {
   employees: Employee[];
   timeLogs: TimeLog[];
   onLogAdded: () => void;
+  isLoading?: boolean;
 }
 
-export default function AttendanceTab({ accessToken, employees, timeLogs = [], onLogAdded }: AttendanceTabProps) {
+export default function AttendanceTab({ accessToken, employees, timeLogs = [], onLogAdded, isLoading = false }: AttendanceTabProps) {
+  const isAdmin = Boolean(accessToken && accessToken !== 'local');
   const [selectedEmpName, setSelectedEmpName] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState<string>('');
   
@@ -54,6 +59,33 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
   const [note, setNote] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [recentUpdates, setRecentUpdates] = useState<Set<string>>(new Set());
+  const prevTimeLogsRef = useRef(timeLogs);
+
+  useEffect(() => {
+    if (timeLogs !== prevTimeLogsRef.current) {
+      const newUpdates = new Set<string>();
+      timeLogs.forEach(log => {
+        const isNew = !prevTimeLogsRef.current.some(prev => 
+          prev.employeeName === log.employeeName && 
+          prev.date === log.date && 
+          prev.status === log.status &&
+          prev.otFrom === log.otFrom &&
+          prev.otTo === log.otTo
+        );
+        if (isNew) {
+          newUpdates.add(`${log.employeeName}-${log.date}`);
+        }
+      });
+      prevTimeLogsRef.current = timeLogs;
+      if (newUpdates.size > 0) {
+        setRecentUpdates(newUpdates);
+        const t = setTimeout(() => setRecentUpdates(new Set()), 3500);
+        return () => clearTimeout(t);
+      }
+    }
+  }, [timeLogs]);
 
   const selectedEmployee = employees.find(e => e.name === selectedEmpName);
 
@@ -244,6 +276,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
         message: `Đã cập nhật công thành công cho toàn bộ công ty ngày ${date}!`
       });
 
+      setShowConfetti(true);
       onLogAdded();
       setTimeout(() => {
         setIsDrawerOpen(false);
@@ -523,6 +556,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
         });
       }
 
+      setShowConfetti(true);
       onLogAdded();
     } catch (err: any) {
       console.error(err);
@@ -562,6 +596,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
 
       setNote('');
       setHasOt(false);
+      setShowConfetti(true);
       onLogAdded();
     } catch (err: any) {
       console.error(err);
@@ -708,7 +743,8 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
   // --- CALENDAR LOGIC END ---
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 relative">
+      <ConfettiEffect isActive={showConfetti} onComplete={() => setShowConfetti(false)} />
       {/* Visual Switcher Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-4 rounded-[24px] border border-slate-150/40 dark:border-slate-800/80 shadow-sm transition-colors">
         <div className="flex items-center gap-3">
@@ -733,7 +769,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
             className="relative w-full"
           >
           {/* Spacious Monthly Calendar Grid (Full Width) */}
-          <div className="bg-white dark:bg-slate-900 p-6 rounded-[32px] border border-slate-100 dark:border-slate-800/80 shadow-md transition-colors duration-300 flex flex-col w-full relative">
+          <div className="bg-white dark:bg-slate-900 p-6 rounded-[24px] border border-slate-150/80 dark:border-slate-800/80 shadow-[4px_4px_0px_0px_rgba(15,23,42,0.06)] dark:shadow-[4px_4px_0px_0px_rgba(255,255,255,0.03)] transition-colors duration-300 flex flex-col w-full relative">
             
             {/* Calendar Controls */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800/80 pb-5 mb-5">
@@ -763,27 +799,30 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                   <Filter className="w-3.5 h-3.5 text-indigo-500" />
                   Xem theo:
                 </span>
-                <select
-                  value={calendarFilter}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setCalendarFilter(val);
-                    if (val !== 'all') {
-                      setSelectedEmpName(val);
-                    }
-                  }}
-                  className="px-3.5 py-2 text-xs font-bold bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 dark:text-slate-100"
-                >
-                  <option value="all">👥 Tất cả nhân sự</option>
-                  {employees.map(e => (
-                    <option key={e.name} value={e.name}>👤 {e.name}</option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <select
+                    value={calendarFilter}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setCalendarFilter(val);
+                      if (val !== 'all') {
+                        setSelectedEmpName(val);
+                      }
+                    }}
+                    className="appearance-none pl-3.5 pr-8 py-2 text-xs font-bold bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 dark:text-slate-100 cursor-pointer transition-all"
+                  >
+                    <option value="all">👥 Tất cả nhân sự</option>
+                    {employees.map(e => (
+                      <option key={e.name} value={e.name}>👤 {e.name}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-450 dark:text-slate-400 pointer-events-none" />
+                </div>
               </div>
             </div>
 
             {/* Calendar Grid Header (Mon to Sun) */}
-            <div className="grid grid-cols-7 gap-1.5 text-center text-[11px] font-bold text-slate-450 dark:text-slate-500 uppercase tracking-wider mb-2 select-none">
+            <div className="grid grid-cols-7 gap-1.5 sm:gap-2.5 text-center text-[10px] sm:text-[11px] font-bold text-slate-450 dark:text-slate-500 uppercase tracking-wider mb-2 select-none">
               <div>Thứ 2</div>
               <div>Thứ 3</div>
               <div>Thứ 4</div>
@@ -794,7 +833,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
             </div>
 
             {/* Calendar Grid Cells */}
-            <div className="grid grid-cols-7 gap-2.5 flex-1 min-h-[520px]">
+            <div className="grid grid-cols-7 gap-1.5 sm:gap-2.5 flex-1 min-h-[400px] sm:min-h-[520px]">
               {calendarDays.map((cell, idx) => {
                 const isSelected = cell.dateStr === date;
                 const isSun = cell.dayOfWeek === 0;
@@ -825,14 +864,19 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
 
                 // Gather details to display
                 return (
-                  <div
+                  <motion.div
                     key={idx}
+                    animate={selectedEmployee && recentUpdates.has(`${selectedEmployee.name}-${cell.dateStr}`) ? {
+                      scale: [1, 1.05, 1],
+                      boxShadow: ["0px 0px 0px rgba(0,0,0,0)", "0px 0px 15px rgba(16, 185, 129, 0.6)", "0px 0px 0px rgba(0,0,0,0)"],
+                    } : {}}
+                    transition={{ duration: 1.5, ease: "easeInOut" }}
                     onClick={() => {
                       setDate(cell.dateStr);
                       setFeedback(null);
                       setIsDrawerOpen(true);
                     }}
-                    className={`min-h-[110px] p-2.5 border rounded-2xl flex flex-col justify-between transition-all hover:scale-[1.01] hover:shadow-sm cursor-pointer relative ${bgClass}`}
+                    className={`min-h-[85px] sm:min-h-[110px] p-1 sm:p-2.5 border rounded-2xl flex flex-col justify-between transition-all duration-200 hover:-translate-y-1 hover:shadow-[4px_4px_0px_0px_#6366f1] dark:hover:shadow-[4px_4px_0px_0px_#4f46e5] hover:border-indigo-500/50 dark:hover:border-indigo-400/50 cursor-pointer relative active:translate-y-0 active:shadow-none ${bgClass}`}
                   >
                     {/* Header of cell: Day number & Holiday info */}
                     <div className="flex justify-between items-start">
@@ -958,7 +1002,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                         })()
                       )}
                     </div>
-                  </div>
+                  </motion.div>
                 );
               })}
             </div>
@@ -979,14 +1023,14 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
           {/* Centered Wide Modal Window for Daily Company Attendance (Fast Check-in) */}
           <AnimatePresence>
             {isDrawerOpen && (
-              <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 sm:p-6 md:p-8">
+              <div className="fixed inset-0 no-swipe z-50 overflow-y-auto flex items-center justify-center p-4 sm:p-6 md:p-8">
                 {/* Backdrop overlay */}
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   onClick={() => setIsDrawerOpen(false)}
-                  className="fixed inset-0 bg-slate-950/60 dark:bg-slate-950/80 backdrop-blur-md cursor-pointer"
+                  className="fixed inset-0 no-swipe bg-slate-950/60 dark:bg-slate-950/80 backdrop-blur-md cursor-pointer"
                 />
 
                 {/* Wide Centered Dialog Panel */}
@@ -995,7 +1039,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.96, y: 20 }}
                   transition={{ type: 'spring', damping: 28, stiffness: 220 }}
-                  className="relative w-full max-w-5xl bg-white dark:bg-slate-900 rounded-[32px] shadow-2xl border border-slate-100 dark:border-slate-800/80 flex flex-col z-10 transition-colors duration-300 overflow-hidden max-h-[90vh]"
+                  className="relative w-full max-w-5xl bg-white dark:bg-slate-900 rounded-[24px] shadow-[4px_4px_0px_0px_rgba(15,23,42,0.06)] dark:shadow-[4px_4px_0px_0px_rgba(255,255,255,0.03)] border border-slate-150/80 dark:border-slate-800/80 flex flex-col z-10 transition-colors duration-300 overflow-hidden max-h-[90vh]"
                 >
                   {/* Header */}
                   <div className="p-6 border-b border-slate-100 dark:border-slate-800/80 flex items-center justify-between bg-slate-50/50 dark:bg-slate-950/20">
@@ -1085,72 +1129,102 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                             const empNote = companyNotes[emp.name] || '';
 
                             return (
-                              <div
+                              <motion.div
                                 key={emp.name}
-                                className="p-4 bg-slate-50/40 dark:bg-slate-950/30 rounded-2xl border border-slate-100 dark:border-slate-800/50 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all hover:bg-slate-50 dark:hover:bg-slate-950/60 hover:border-slate-200/80 dark:hover:border-slate-800"
+                                animate={recentUpdates.has(`${emp.name}-${date}`) ? {
+                                  scale: [1, 1.02, 1],
+                                  boxShadow: ["0px 0px 0px rgba(0,0,0,0)", "0px 0px 15px rgba(16, 185, 129, 0.4)", "0px 0px 0px rgba(0,0,0,0)"],
+                                  backgroundColor: ["transparent", "rgba(16, 185, 129, 0.1)", "transparent"]
+                                } : {}}
+                                transition={{ duration: 1.5, ease: "easeInOut" }}
+                                className="p-4 bg-slate-50/40 dark:bg-slate-950/30 rounded-2xl border border-slate-100 dark:border-slate-800/50 flex flex-col lg:flex-row lg:items-center justify-between gap-4 transition-all hover:bg-slate-50 dark:hover:bg-slate-950/60 hover:border-slate-200/80 dark:hover:border-slate-800"
                               >
-                                {/* Left: Name & Role + Action Button */}
-                                <div className="flex items-center gap-3 min-w-[220px]">
-                                  <div className="w-9 h-9 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 rounded-xl font-extrabold text-[11px] flex items-center justify-center border border-indigo-100/30 dark:border-indigo-900/10">
-                                    {emp.name.split(' ').pop()?.substring(0, 2).toUpperCase() || 'NV'}
+                                {/* Left & Center-Left: Grouped together to keep them close and compact */}
+                                <div className="flex flex-col sm:flex-row sm:items-center gap-4 lg:gap-6 min-w-0 flex-1">
+                                  {/* Profile Details */}
+                                  <div className="flex items-center gap-3 min-w-[180px] max-w-[240px] shrink-0">
+                                    <div className="w-9 h-9 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 rounded-xl font-extrabold text-[11px] flex items-center justify-center border border-indigo-100/30 dark:border-indigo-900/10 shrink-0">
+                                      {emp.name.split(' ').pop()?.substring(0, 2).toUpperCase() || 'NV'}
+                                    </div>
+                                    <div className="min-w-0">
+                                      <span className="font-extrabold text-xs text-slate-800 dark:text-slate-100 block truncate">{getEmployeeDisplayName(emp.name, isAdmin, false, emp.displayName)}</span>
+                                      <span className="text-[10px] text-slate-450 dark:text-slate-500 block font-sans truncate">{emp.role}</span>
+                                    </div>
                                   </div>
-                                  <div className="flex-1 min-w-0">
-                                    <span className="font-extrabold text-xs text-slate-800 dark:text-slate-100 block truncate">{emp.name}</span>
-                                    <span className="text-[10px] text-slate-450 dark:text-slate-500 block font-sans truncate">{emp.role}</span>
-                                  </div>
-                                </div>
 
-                                {/* Center: 3-State Status Toggle */}
-                                <div className="flex bg-white dark:bg-slate-900 p-0.5 rounded-xl border border-slate-200/60 dark:border-slate-800/80 shadow-sm text-[10px] font-bold self-start md:self-auto shrink-0">
-                                  {[
-                                    { label: 'Có đi làm', value: 'Có đi làm' as const, activeClass: 'bg-emerald-500 text-white dark:bg-emerald-600 shadow-sm' },
-                                    { label: 'Vắng mặt', value: 'Không đi làm' as const, activeClass: 'bg-rose-500 text-white dark:bg-rose-600 shadow-sm' },
-                                    { label: 'Nghỉ phép', value: 'Nghỉ phép' as const, activeClass: 'bg-amber-500 text-white dark:bg-amber-600 shadow-sm' }
-                                  ].map(opt => {
-                                    const isActive = empStatus === opt.value;
-                                    return (
-                                      <button
-                                        key={opt.value}
-                                        type="button"
-                                        onClick={() => {
-                                          setCompanyStatuses(prev => ({ ...prev, [emp.name]: opt.value }));
-                                        }}
-                                        className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                                          isActive
-                                            ? `${opt.activeClass} font-extrabold`
-                                            : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
-                                        }`}
-                                      >
-                                        {opt.label}
-                                      </button>
-                                    );
-                                  })}
+                                  {/* 3-State Status Toggle (Right next to details!) */}
+                                  <div className="flex bg-white dark:bg-slate-900 p-0.5 rounded-xl border border-slate-200/60 dark:border-slate-800/80 shadow-sm text-[10px] font-bold self-start sm:self-auto shrink-0">
+                                    {[
+                                      { label: 'Có đi làm', value: 'Có đi làm' as const, activeClass: 'bg-emerald-500 text-white dark:bg-emerald-600 shadow-sm' },
+                                      { label: 'Vắng mặt', value: 'Không đi làm' as const, activeClass: 'bg-rose-500 text-white dark:bg-rose-600 shadow-sm' },
+                                      { label: 'Nghỉ phép', value: 'Nghỉ phép' as const, activeClass: 'bg-amber-500 text-white dark:bg-amber-600 shadow-sm' }
+                                    ].map(opt => {
+                                      const isActive = empStatus === opt.value;
+                                      return (
+                                        <button
+                                          key={opt.value}
+                                          type="button"
+                                          onClick={() => {
+                                            setCompanyStatuses(prev => ({ ...prev, [emp.name]: opt.value }));
+                                          }}
+                                          className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                                            isActive
+                                              ? `${opt.activeClass} font-extrabold`
+                                              : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
+                                          }`}
+                                        >
+                                          {opt.label}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
                                 </div>
 
                                 {/* Right: OT and Notes Inputs side-by-side */}
-                                <div className="flex-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-3 text-[10px] w-full md:w-auto">
+                                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 text-[10px] w-full lg:w-[48%] xl:w-[45%] shrink-0">
                                   {/* OT Checkbox and time ranges */}
-                                  <div className="flex items-center gap-2.5 shrink-0 bg-white dark:bg-slate-900 px-3 py-1 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm h-11">
+                                  <div className="flex items-center gap-2.5 shrink-0 bg-white dark:bg-slate-900 px-3 py-1 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm h-11 w-full sm:w-auto">
                                     <label className="flex items-center gap-2 cursor-pointer font-extrabold text-[11px] text-slate-700 dark:text-slate-200 select-none">
-                                      <input
-                                        type="checkbox"
-                                        checked={empHasOt}
-                                        onChange={(e) => {
-                                          const checked = e.target.checked;
-                                          setCompanyHasOt(prev => ({ ...prev, [emp.name]: checked }));
-                                          if (checked) {
-                                            setCustomTimePicker({
-                                              isOpen: true,
-                                              empName: emp.name,
-                                              isDetailedModal: false,
-                                              fromVal: companyOtFrom[emp.name] || '18:00',
-                                              toVal: companyOtTo[emp.name] || '21:00'
-                                            });
-                                          }
-                                        }}
-                                        className="rounded-lg border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500 w-5 h-5 cursor-pointer transition-all active:scale-95"
-                                      />
-                                      Tăng ca (OT)
+                                      <div className="relative">
+                                        <input
+                                          type="checkbox"
+                                          checked={empHasOt}
+                                          onChange={(e) => {
+                                            const checked = e.target.checked;
+                                            setCompanyHasOt(prev => ({ ...prev, [emp.name]: checked }));
+                                            if (checked) {
+                                              setCustomTimePicker({
+                                                isOpen: true,
+                                                empName: emp.name,
+                                                isDetailedModal: false,
+                                                fromVal: companyOtFrom[emp.name] || '18:00',
+                                                toVal: companyOtTo[emp.name] || '21:00'
+                                              });
+                                            }
+                                          }}
+                                          className="sr-only"
+                                        />
+                                        <div className={`w-5 h-5 rounded-lg border-2 flex items-center justify-center transition-all duration-200 ${
+                                          empHasOt
+                                            ? 'border-indigo-500 bg-indigo-600 dark:bg-indigo-500 text-white shadow-md shadow-indigo-500/30 scale-105'
+                                            : 'border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950/40 hover:border-indigo-400 dark:hover:border-indigo-400'
+                                        }`}>
+                                          {empHasOt && (
+                                            <motion.svg
+                                              initial={{ scale: 0, rotate: -15 }}
+                                              animate={{ scale: 1, rotate: 0 }}
+                                              className="w-3 h-3 stroke-[3.5] stroke-current"
+                                              viewBox="0 0 24 24"
+                                              fill="none"
+                                              strokeLinecap="round"
+                                              strokeLinejoin="round"
+                                            >
+                                              <polyline points="20 6 9 17 4 12" />
+                                            </motion.svg>
+                                          )}
+                                        </div>
+                                      </div>
+                                      <span className="text-[11px] font-extrabold text-slate-700 dark:text-slate-200">Tăng ca (OT)</span>
                                     </label>
 
                                     {empHasOt && (
@@ -1187,7 +1261,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                                     className="flex-1 px-3 py-1.5 text-[10px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500"
                                   />
                                 </div>
-                              </div>
+                              </motion.div>
                             );
                           })
                         )}
@@ -1226,7 +1300,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                                 type: 'success',
                                 message: 'Đã đặt trạng thái "Có đi làm" cho toàn phòng. Bấm "Lưu Chấm Công Cả Ngày" để hoàn tất!'
                               });
-                            }}
+                             }}
                             className="flex-1 sm:flex-initial px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950/20 dark:hover:bg-emerald-900/30 dark:text-emerald-400 rounded-xl text-xs font-bold border border-emerald-200/50 dark:border-emerald-900/20 transition-all cursor-pointer flex items-center justify-center gap-1.5"
                           >
                             <span>🟢 Đặt đi làm đủ</span>
@@ -1249,7 +1323,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                                 type: 'success',
                                 message: 'Đã đặt trạng thái "Vắng mặt" cho toàn phòng. Bấm "Lưu Chấm Công Cả Ngày" để hoàn tất!'
                               });
-                            }}
+                             }}
                             className="flex-1 sm:flex-initial px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/20 dark:hover:bg-rose-900/30 dark:text-rose-400 rounded-xl text-xs font-bold border border-rose-200/50 dark:border-rose-900/20 transition-all cursor-pointer flex items-center justify-center gap-1.5"
                           >
                             <span>🔴 Vắng cả phòng</span>
@@ -1284,14 +1358,14 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
           {/* Detailed Popup Modal for Quick Edit Row in Batch Mode */}
           <AnimatePresence>
             {editingEmployeeForBatch && (
-              <div className="fixed inset-0 z-[100] overflow-y-auto flex items-center justify-center p-4">
+              <div className="fixed inset-0 no-swipe z-[100] overflow-y-auto flex items-center justify-center p-4">
                 {/* Backdrop overlay */}
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   onClick={() => setEditingEmployeeForBatch(null)}
-                  className="fixed inset-0 bg-slate-950/60 dark:bg-slate-950/80 backdrop-blur-sm cursor-pointer"
+                  className="fixed inset-0 no-swipe bg-slate-950/60 dark:bg-slate-950/80 backdrop-blur-sm cursor-pointer"
                 />
 
                 {/* Modal Container */}
@@ -1381,8 +1455,8 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                                   fromVal: modalOtFrom || '18:00',
                                   toVal: modalOtTo || '21:00'
                                 });
-                              }
-                            }}
+                               }
+                             }}
                             className="sr-only peer"
                           />
                           <div className="w-11 h-6 bg-slate-200 dark:bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-5 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600 dark:peer-checked:bg-indigo-500"></div>
@@ -1403,8 +1477,8 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                                   fromVal: modalOtFrom || '18:00',
                                   toVal: modalOtTo || '21:00'
                                 });
-                              }}
-                              className="w-full py-3 bg-indigo-50 hover:bg-indigo-100/90 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 border border-indigo-150 dark:border-indigo-900/30 rounded-2xl font-mono font-black text-sm flex items-center justify-center gap-2 cursor-pointer transition-all hover:scale-[1.01] shadow-xs"
+                               }
+                               }
                             >
                               <span>{modalOtFrom}</span>
                               <span className="text-xs text-indigo-400 font-sans font-bold">đến</span>
@@ -1522,7 +1596,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                   const newVal = joinTimeStr(hr, min);
                   return activeTimeField === 'from' ? { ...prev, fromVal: newVal } : { ...prev, toVal: newVal };
                 });
-              };
+               };
 
               const handleHourInputChange = (val: string) => {
                 const clean = val.replace(/[^0-9]/g, '');
@@ -1639,7 +1713,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                     const isSelected = (activeHourNum % 12) === (val % 12);
                     return { val, valStr, x, y, isSelected };
                   });
-                } else {
+                 }
                   return Array.from({ length: 12 }, (_, i) => {
                     const val = i * 5;
                     const valStr = String(val).padStart(2, '0');
@@ -1649,20 +1723,19 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                     const isSelected = activeMinuteNum === val;
                     return { val, valStr, x, y, isSelected };
                   });
-                }
               };
 
               const clockNumbers = getClockNumbers();
 
               return (
-                <div className="fixed inset-0 z-[150] overflow-y-auto flex items-center justify-center p-4">
+                <div className="fixed inset-0 no-swipe z-[150] overflow-y-auto flex items-center justify-center p-4">
                   {/* Backdrop Overlay */}
                   <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     onClick={() => setCustomTimePicker(null)}
-                    className="fixed inset-0 bg-slate-950/70 dark:bg-slate-950/90 backdrop-blur-md cursor-pointer"
+                    className="fixed inset-0 no-swipe bg-slate-950/70 dark:bg-slate-950/90 backdrop-blur-md cursor-pointer"
                   />
 
                   {/* Picker Container */}
@@ -2020,7 +2093,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                       {emp.name.charAt(0)}
                     </div>
                     <div>
-                      <div className="font-bold text-sm text-slate-850 dark:text-slate-200">{emp.name}</div>
+                      <div className="font-bold text-sm text-slate-850 dark:text-slate-200">{getEmployeeDisplayName(emp.name, isAdmin, false, emp.displayName)}</div>
                       <div className="text-xs text-slate-500 dark:text-slate-400">{emp.role}</div>
                     </div>
                   </button>
@@ -2316,13 +2389,13 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                           </div>
                           <div>
                             <div className="flex items-center gap-2">
-                              <h4 className="font-bold text-slate-800 dark:text-slate-100 text-xs sm:text-sm">{report.displayName}</h4>
+                              <h4 className="font-bold text-slate-800 dark:text-slate-100 text-xs sm:text-sm">{isAdmin ? report.displayName : getEmployeeDisplayName(report.displayName, isAdmin, false, report.matchedEmployee?.displayName)}</h4>
                               <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
                                 {report.category}
                               </span>
                             </div>
                             <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
-                              {report.isMatched ? `✓ Tài khoản: ${report.matchedEmployee?.name}` : "Chưa tạo tài khoản hệ thống"}
+                              {report.isMatched ? `✓ Tài khoản: ${isAdmin ? report.matchedEmployee?.name : getEmployeeDisplayName(report.matchedEmployee?.name || '', isAdmin, false, report.matchedEmployee?.displayName)}` : "Chưa tạo tài khoản hệ thống"}
                             </p>
                           </div>
                         </div>
@@ -2428,7 +2501,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                             {report.employee.name.charAt(0)}
                           </div>
                           <div>
-                            <h4 className="font-bold text-slate-800 dark:text-slate-100 text-xs sm:text-sm">{report.employee.name}</h4>
+                            <h4 className="font-bold text-slate-800 dark:text-slate-100 text-xs sm:text-sm">{getEmployeeDisplayName(report.employee.name, isAdmin, false, report.employee.displayName)}</h4>
                             <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
                               Thâm niên: <span className="font-semibold">{report.employee.role}</span> | Vào làm: <span className="font-mono">{report.employee.registeredAt || "N/A"}</span>
                               {report.employee.leftAt && (
@@ -2527,3 +2600,4 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
     </div>
   );
 }
+

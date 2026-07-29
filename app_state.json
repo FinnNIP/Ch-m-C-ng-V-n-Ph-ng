@@ -1,0 +1,2277 @@
+{
+  "employees": [
+    {
+      "name": "Đặng Đình Vũ",
+      "role": "Trưởng phòng",
+      "registeredAt": "1/1/2024",
+      "leftAt": "",
+      "rowIndex": 2
+    },
+    {
+      "name": "Võ Văn Hảo",
+      "role": "3D Generalist",
+      "registeredAt": "10/5/2024",
+      "leftAt": "",
+      "rowIndex": 3
+    },
+    {
+      "name": "Đặng Đình Dũng",
+      "role": "Editor",
+      "registeredAt": "3/7/2024",
+      "leftAt": "",
+      "rowIndex": 4
+    },
+    {
+      "name": "Tô Thành Thuận",
+      "role": "3D Generalist",
+      "registeredAt": "1/12/2025",
+      "leftAt": "",
+      "rowIndex": 5
+    },
+    {
+      "name": "Nguyễn Thị Hoài Thương",
+      "role": "3D Generalist",
+      "registeredAt": "4/8/2025",
+      "leftAt": "",
+      "rowIndex": 6
+    },
+    {
+      "name": "Nguyễn Huy Thức",
+      "role": "Editor",
+      "registeredAt": "4/9/2025",
+      "leftAt": "",
+      "rowIndex": 7
+    },
+    {
+      "name": "Phạm Thị Anh Nhi",
+      "role": "Designer",
+      "registeredAt": "2025-05-07",
+      "leftAt": "",
+      "rowIndex": 8
+    }
+  ],
+  "timeLogs": [
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2026-07-05",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 2
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2026-07-05",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 3
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2026-07-05",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 4
+    },
+    {
+      "employeeName": "Phạm Thị Anh Nhi",
+      "date": "2026-07-05",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 5
+    },
+    {
+      "employeeName": "Nguyễn Thị Hoài Thương",
+      "date": "2026-07-05",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 6
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2026-07-05",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 7
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2026-07-06",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 8
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2026-07-06",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 9
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2026-07-06",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 10
+    },
+    {
+      "employeeName": "Phạm Thị Anh Nhi",
+      "date": "2026-07-06",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 11
+    },
+    {
+      "employeeName": "Nguyễn Thị Hoài Thương",
+      "date": "2026-07-06",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 12
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2026-07-06",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 13
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2026-07-09",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 14
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2026-07-09",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 15
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2026-07-09",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 16
+    },
+    {
+      "employeeName": "Phạm Thị Anh Nhi",
+      "date": "2026-07-09",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 17
+    },
+    {
+      "employeeName": "Nguyễn Thị Hoài Thương",
+      "date": "2026-07-09",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 18
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2026-07-09",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 19
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2026-07-12",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 20
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2026-07-12",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 21
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2026-07-12",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 22
+    },
+    {
+      "employeeName": "Phạm Thị Anh Nhi",
+      "date": "2026-07-12",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 23
+    },
+    {
+      "employeeName": "Nguyễn Thị Hoài Thương",
+      "date": "2026-07-12",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 24
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2026-07-12",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 25
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2026-07-19",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 26
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2026-07-19",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 27
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2026-07-19",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 28
+    },
+    {
+      "employeeName": "Phạm Thị Anh Nhi",
+      "date": "2026-07-19",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 29
+    },
+    {
+      "employeeName": "Nguyễn Thị Hoài Thương",
+      "date": "2026-07-19",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 30
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2026-07-19",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 31
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2026-07-26",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 32
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2026-07-26",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 33
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2026-07-26",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 34
+    },
+    {
+      "employeeName": "Phạm Thị Anh Nhi",
+      "date": "2026-07-26",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 35
+    },
+    {
+      "employeeName": "Nguyễn Thị Hoài Thương",
+      "date": "2026-07-26",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 36
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2026-07-26",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 37
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2026-07-31",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 38
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2026-07-31",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 39
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2026-07-31",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 40
+    },
+    {
+      "employeeName": "Phạm Thị Anh Nhi",
+      "date": "2026-07-31",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 41
+    },
+    {
+      "employeeName": "Nguyễn Thị Hoài Thương",
+      "date": "2026-07-31",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 42
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2026-07-31",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 43
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2025-07-01",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 44
+    },
+    {
+      "employeeName": "Bảo",
+      "date": "2025-07-01",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 45
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2025-07-01",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 46
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2025-07-01",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 47
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2025-07-01",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 48
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2025-07-02",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 49
+    },
+    {
+      "employeeName": "Bảo",
+      "date": "2025-07-02",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 50
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2025-07-02",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 51
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2025-07-02",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 52
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2025-07-02",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 53
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2025-07-03",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 54
+    },
+    {
+      "employeeName": "Bảo",
+      "date": "2025-07-03",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 55
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2025-07-03",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 56
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2025-07-03",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 57
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2025-07-03",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 58
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2025-07-04",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 59
+    },
+    {
+      "employeeName": "Bảo",
+      "date": "2025-07-04",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 60
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2025-07-04",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 61
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2025-07-04",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 62
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2025-07-04",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 63
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2025-07-05",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 64
+    },
+    {
+      "employeeName": "Bảo",
+      "date": "2025-07-05",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 65
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2025-07-05",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 66
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2025-07-05",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 67
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2025-07-05",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 68
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2025-07-06",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 69
+    },
+    {
+      "employeeName": "Bảo",
+      "date": "2025-07-06",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 70
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2025-07-06",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 71
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2025-07-06",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 72
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2025-07-06",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 73
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2025-07-07",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 74
+    },
+    {
+      "employeeName": "Bảo",
+      "date": "2025-07-07",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 75
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2025-07-07",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 76
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2025-07-07",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 77
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2025-07-07",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 78
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2025-07-08",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 79
+    },
+    {
+      "employeeName": "Bảo",
+      "date": "2025-07-08",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 80
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2025-07-08",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 81
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2025-07-08",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 82
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2025-07-08",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 83
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2025-07-09",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 84
+    },
+    {
+      "employeeName": "Bảo",
+      "date": "2025-07-09",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 85
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2025-07-09",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 86
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2025-07-09",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 87
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2025-07-09",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 88
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2025-07-10",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 89
+    },
+    {
+      "employeeName": "Bảo",
+      "date": "2025-07-10",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 90
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2025-07-10",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 91
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2025-07-10",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 92
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2025-07-10",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 93
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2025-07-11",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 94
+    },
+    {
+      "employeeName": "Bảo",
+      "date": "2025-07-11",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 95
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2025-07-11",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 96
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2025-07-11",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 97
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2025-07-11",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 98
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2025-07-12",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 99
+    },
+    {
+      "employeeName": "Bảo",
+      "date": "2025-07-12",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 100
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2025-07-12",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 101
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2025-07-12",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 102
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2025-07-12",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 103
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2025-07-13",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 104
+    },
+    {
+      "employeeName": "Bảo",
+      "date": "2025-07-13",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 105
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2025-07-13",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 106
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2025-07-13",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 107
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2025-07-13",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 108
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2025-07-14",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 109
+    },
+    {
+      "employeeName": "Bảo",
+      "date": "2025-07-14",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 110
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2025-07-14",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 111
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2025-07-14",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 112
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2025-07-14",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 113
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2025-07-15",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 114
+    },
+    {
+      "employeeName": "Bảo",
+      "date": "2025-07-15",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 115
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2025-07-15",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 116
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2025-07-15",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 117
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2025-07-15",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 118
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2025-07-16",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 119
+    },
+    {
+      "employeeName": "Bảo",
+      "date": "2025-07-16",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 120
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2025-07-16",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 121
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2025-07-16",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 122
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2025-07-16",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 123
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2025-07-17",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 124
+    },
+    {
+      "employeeName": "Bảo",
+      "date": "2025-07-17",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 125
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2025-07-17",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 126
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2025-07-17",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 127
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2025-07-17",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 128
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2025-07-18",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 129
+    },
+    {
+      "employeeName": "Bảo",
+      "date": "2025-07-18",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 130
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2025-07-18",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 131
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2025-07-18",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 132
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2025-07-18",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 133
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2025-07-19",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 134
+    },
+    {
+      "employeeName": "Bảo",
+      "date": "2025-07-19",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 135
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2025-07-19",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 136
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2025-07-19",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 137
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2025-07-19",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 138
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2025-07-20",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 139
+    },
+    {
+      "employeeName": "Bảo",
+      "date": "2025-07-20",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 140
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2025-07-20",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 141
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2025-07-20",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 142
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2025-07-20",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 143
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2025-07-21",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 144
+    },
+    {
+      "employeeName": "Bảo",
+      "date": "2025-07-21",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 145
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2025-07-21",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 146
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2025-07-21",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 147
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2025-07-21",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 148
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2025-07-22",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 149
+    },
+    {
+      "employeeName": "Bảo",
+      "date": "2025-07-22",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 150
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2025-07-22",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 151
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2025-07-22",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 152
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2025-07-22",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 153
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2025-07-23",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 154
+    },
+    {
+      "employeeName": "Bảo",
+      "date": "2025-07-23",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 155
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2025-07-23",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 156
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2025-07-23",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 157
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2025-07-23",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 158
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2025-07-24",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 159
+    },
+    {
+      "employeeName": "Bảo",
+      "date": "2025-07-24",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 160
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2025-07-24",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 161
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2025-07-24",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 162
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2025-07-24",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 163
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2025-07-25",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 164
+    },
+    {
+      "employeeName": "Bảo",
+      "date": "2025-07-25",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 165
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2025-07-25",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 166
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2025-07-25",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 167
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2025-07-25",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 168
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2025-07-26",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 169
+    },
+    {
+      "employeeName": "Bảo",
+      "date": "2025-07-26",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 170
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2025-07-26",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 171
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2025-07-26",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 172
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2025-07-26",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 173
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2025-07-27",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 174
+    },
+    {
+      "employeeName": "Bảo",
+      "date": "2025-07-27",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 175
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2025-07-27",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 176
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2025-07-27",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 177
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2025-07-27",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 178
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2025-07-28",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 179
+    },
+    {
+      "employeeName": "Bảo",
+      "date": "2025-07-28",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 180
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2025-07-28",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 181
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2025-07-28",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 182
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2025-07-28",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 183
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2025-07-29",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 184
+    },
+    {
+      "employeeName": "Bảo",
+      "date": "2025-07-29",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 185
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2025-07-29",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 186
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2025-07-29",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 187
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2025-07-29",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 188
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2025-07-30",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 189
+    },
+    {
+      "employeeName": "Bảo",
+      "date": "2025-07-30",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 190
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2025-07-30",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 191
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2025-07-30",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 192
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2025-07-30",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 193
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2025-07-31",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 194
+    },
+    {
+      "employeeName": "Bảo",
+      "date": "2025-07-31",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 195
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2025-07-31",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 196
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2025-07-31",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 197
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2025-07-31",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 198
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2026-07-01",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 199
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2026-07-01",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 200
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2026-07-01",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 201
+    },
+    {
+      "employeeName": "Phạm Thị Anh Nhi",
+      "date": "2026-07-01",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 202
+    },
+    {
+      "employeeName": "Nguyễn Thị Hoài Thương",
+      "date": "2026-07-01",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 203
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2026-07-01",
+      "status": "Có đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 204
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2026-07-16",
+      "status": "Nghỉ phép",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 205
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2026-07-16",
+      "status": "Nghỉ phép",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 206
+    },
+    {
+      "employeeName": "Nguyễn Huy Thức",
+      "date": "2026-07-12",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 207
+    },
+    {
+      "employeeName": "Nguyễn Huy Thức",
+      "date": "2026-07-26",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 208
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2026-01-02",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 209
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2026-01-02",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 210
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2026-01-02",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 211
+    },
+    {
+      "employeeName": "Phạm Thị Anh Nhi",
+      "date": "2026-01-02",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 212
+    },
+    {
+      "employeeName": "Nguyễn Thị Hoài Thương",
+      "date": "2026-01-02",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 213
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2026-01-02",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 214
+    },
+    {
+      "employeeName": "Nguyễn Huy Thức",
+      "date": "2026-01-02",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 215
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2026-01-03",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 216
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2026-01-03",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 217
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2026-01-03",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 218
+    },
+    {
+      "employeeName": "Phạm Thị Anh Nhi",
+      "date": "2026-01-03",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 219
+    },
+    {
+      "employeeName": "Nguyễn Thị Hoài Thương",
+      "date": "2026-01-03",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 220
+    },
+    {
+      "employeeName": "Đặng Đình Vũ",
+      "date": "2026-01-03",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 221
+    },
+    {
+      "employeeName": "Nguyễn Huy Thức",
+      "date": "2026-01-03",
+      "status": "Không đi làm",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 222
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2026-01-09",
+      "status": "Có đi làm",
+      "otFrom": "17:30",
+      "otTo": "19:30",
+      "note": "",
+      "rowIndex": 223
+    },
+    {
+      "employeeName": "Nguyễn Huy Thức",
+      "date": "2026-01-09",
+      "status": "Có đi làm",
+      "otFrom": "17:30",
+      "otTo": "19:30",
+      "note": "",
+      "rowIndex": 224
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2026-07-03",
+      "status": "Nghỉ phép",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 225
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2026-07-04",
+      "status": "Nghỉ phép",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 226
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2026-06-05",
+      "status": "Nghỉ phép",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 227
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2026-06-06",
+      "status": "Nghỉ phép",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 228
+    },
+    {
+      "employeeName": "Võ Văn Hảo",
+      "date": "2026-06-08",
+      "status": "Nghỉ phép",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 229
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2026-06-09",
+      "status": "Nghỉ phép",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 230
+    },
+    {
+      "employeeName": "Phạm Thị Anh Nhi",
+      "date": "2026-06-21",
+      "status": "Có đi làm",
+      "otFrom": "08:00",
+      "otTo": "12:00",
+      "note": "",
+      "rowIndex": 231
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2026-06-28",
+      "status": "Có đi làm",
+      "otFrom": "08:30",
+      "otTo": "17:30",
+      "note": "",
+      "rowIndex": 232
+    },
+    {
+      "employeeName": "Nguyễn Huy Thức",
+      "date": "2026-06-28",
+      "status": "Có đi làm",
+      "otFrom": "08:30",
+      "otTo": "17:30",
+      "note": "",
+      "rowIndex": 233
+    },
+    {
+      "employeeName": "Tô Thành Thuận",
+      "date": "2026-07-17",
+      "status": "Nghỉ phép",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 234
+    },
+    {
+      "employeeName": "Nguyễn Huy Thức",
+      "date": "2026-07-24",
+      "status": "Nghỉ phép",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 235
+    },
+    {
+      "employeeName": "Đặng Đình Dũng",
+      "date": "2026-07-24",
+      "status": "Nghỉ phép",
+      "otFrom": "",
+      "otTo": "",
+      "note": "",
+      "rowIndex": 236
+    }
+  ],
+  "spreadsheetId": "1WBVOBjsnSOEGKwTuKzf1LVH0ErOdzmAUKk2Bg9MtoTs",
+  "security": {
+    "securityEnabled": false,
+    "departmentEmails": "",
+    "departmentPassword": "",
+    "accountantKey": "visual-accounting"
+  },
+  "auditLogs": [
+    {
+      "id": "log_1785119779182_ntcy4",
+      "timestamp": "2026-07-27T02:36:19.182Z",
+      "user": "darklight6953@gmail.com",
+      "action": "Cập nhật dữ liệu & cấu hình",
+      "details": "Đồng bộ qua API từ IP: 113.161.91.243, 169.254.169.126"
+    },
+    {
+      "id": "log_1785119777636_3dqz6",
+      "timestamp": "2026-07-27T02:36:17.636Z",
+      "user": "darklight6953@gmail.com",
+      "action": "Cập nhật dữ liệu & cấu hình",
+      "details": "Đồng bộ qua API từ IP: 113.161.91.243, 169.254.169.126"
+    },
+    {
+      "id": "log_1785119764439_80jfu",
+      "timestamp": "2026-07-27T02:36:04.439Z",
+      "user": "darklight6953@gmail.com",
+      "action": "Cập nhật dữ liệu & cấu hình",
+      "details": "Đồng bộ qua API từ IP: 113.161.91.243, 169.254.169.126"
+    },
+    {
+      "id": "log_1785119762903_7rxo5",
+      "timestamp": "2026-07-27T02:36:02.903Z",
+      "user": "darklight6953@gmail.com",
+      "action": "Cập nhật dữ liệu & cấu hình",
+      "details": "Đồng bộ qua API từ IP: 113.161.91.243, 169.254.169.126"
+    },
+    {
+      "id": "log_1785119741676_bh6vd",
+      "timestamp": "2026-07-27T02:35:41.676Z",
+      "user": "Nhân viên (Guest)",
+      "action": "Truy cập Cổng tra cứu nhân viên",
+      "details": "Truy cập từ IP: 113.161.91.243, 169.254.169.126"
+    },
+    {
+      "id": "log_1785119731002_p0b6b",
+      "timestamp": "2026-07-27T02:35:31.002Z",
+      "user": "Đặng Đình Dũng (Nhân viên)",
+      "action": "Tra cứu công phép hằng tháng",
+      "details": "Xem thông tin Tháng 7/2026"
+    },
+    {
+      "id": "log_1785119726676_2me5h",
+      "timestamp": "2026-07-27T02:35:26.676Z",
+      "user": "Nhân viên (Guest)",
+      "action": "Truy cập Cổng tra cứu nhân viên",
+      "details": "Truy cập từ IP: 113.161.91.243, 169.254.169.126"
+    },
+    {
+      "id": "log_1785119717014_72r18",
+      "timestamp": "2026-07-27T02:35:17.014Z",
+      "user": "Đặng Đình Vũ (Nhân viên)",
+      "action": "Tra cứu công phép hằng tháng",
+      "details": "Xem thông tin Tháng 7/2026"
+    },
+    {
+      "id": "log_1785119713630_v78pv",
+      "timestamp": "2026-07-27T02:35:13.630Z",
+      "user": "Nhân viên (Guest)",
+      "action": "Truy cập Cổng tra cứu nhân viên",
+      "details": "Truy cập từ IP: 113.161.91.243, 169.254.169.126"
+    },
+    {
+      "id": "log_1785119620359_d0bv3",
+      "timestamp": "2026-07-27T02:33:40.359Z",
+      "user": "darklight6953@gmail.com",
+      "action": "Cập nhật dữ liệu & cấu hình",
+      "details": "Đồng bộ qua API từ IP: 113.161.91.243, 169.254.169.126"
+    },
+    {
+      "id": "log_1785119618776_kivxg",
+      "timestamp": "2026-07-27T02:33:38.776Z",
+      "user": "darklight6953@gmail.com",
+      "action": "Cập nhật dữ liệu & cấu hình",
+      "details": "Đồng bộ qua API từ IP: 113.161.91.243, 169.254.169.126"
+    },
+    {
+      "id": "log_1785119618195_hpoad",
+      "timestamp": "2026-07-27T02:33:38.195Z",
+      "user": "darklight6953@gmail.com",
+      "action": "Cập nhật dữ liệu & cấu hình",
+      "details": "Đồng bộ qua API từ IP: 113.161.91.243, 169.254.169.126"
+    },
+    {
+      "id": "log_1785119594503_2zuag",
+      "timestamp": "2026-07-27T02:33:14.503Z",
+      "user": "Hệ thống tự khôi phục (Client Cache)",
+      "action": "Cập nhật dữ liệu & cấu hình",
+      "details": "Đồng bộ qua API từ IP: 113.161.91.243, 169.254.169.126"
+    },
+    {
+      "id": "log_1785119594437_7zb40",
+      "timestamp": "2026-07-27T02:33:14.437Z",
+      "user": "Hệ thống tự khôi phục (Client Cache)",
+      "action": "Cập nhật dữ liệu & cấu hình",
+      "details": "Đồng bộ qua API từ IP: 113.161.91.243, 169.254.169.126"
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 export interface Employee {
   name: string; // Họ Và Tên (Unique identifier now)
+  displayName?: string; // Tên hiển thị khi xuất file PNG/PDF/Excel & Guest mode
   role: string; // Chức Vụ
   registeredAt: string; // Ngày Đăng Ký
   leftAt?: string; // Ngày Rời Khỏi / Nghỉ Việc
