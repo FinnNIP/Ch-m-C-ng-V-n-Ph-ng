@@ -210,8 +210,20 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
   // Filtered employees list
   const filteredEmployees = employees.filter(e =>
     e.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    e.role.toLowerCase().includes(searchTerm.toLowerCase())
+    e.role.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (e.displayName && e.displayName.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    (e.department && e.department.toLowerCase().includes(searchTerm.toLowerCase()))
   );
+
+  const groupedFilteredEmployees = useMemo(() => {
+    const groups: Record<string, typeof filteredEmployees> = {};
+    filteredEmployees.forEach(emp => {
+      const dept = emp.department || 'Chưa phân bổ';
+      if (!groups[dept]) groups[dept] = [];
+      groups[dept].push(emp);
+    });
+    return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
+  }, [filteredEmployees]);
 
   // Pre-populate batch company states when date or timeLogs change
   useEffect(() => {
@@ -327,15 +339,25 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
 
   // Leave calculation according to Law (Standard Mode)
   const leaveReports = useMemo(() => {
+    const realDate = new Date();
+    const realYear = realDate.getFullYear();
+    const realMonth = realDate.getMonth() + 1;
+    let capMonth = 12;
+    if (currentYear === realYear) {
+      capMonth = realMonth;
+    } else if (currentYear > realYear) {
+      capMonth = 0;
+    }
+
     return employees.map(emp => {
-      let monthsWorkedInSelectedYear = 12;
+      let monthsWorkedInSelectedYear = capMonth;
       const rDate = parseRegisteredDate(emp.registeredAt);
 
       if (rDate) {
         if (rDate.year > currentYear) {
           monthsWorkedInSelectedYear = 0;
         } else if (rDate.year === currentYear) {
-          monthsWorkedInSelectedYear = Math.max(0, 12 - rDate.month + 1);
+          monthsWorkedInSelectedYear = Math.max(0, capMonth - rDate.month + 1);
         }
       }
 
@@ -345,7 +367,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
           monthsWorkedInSelectedYear = 0;
         } else if (rLeft.year === currentYear) {
           const startMonth = rDate && rDate.year === currentYear ? rDate.month : 1;
-          const endMonth = rLeft.month;
+          const endMonth = Math.min(rLeft.month, capMonth);
           monthsWorkedInSelectedYear = Math.max(0, endMonth - startMonth + 1);
         }
       }
@@ -413,109 +435,103 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
 
   // Leave calculation according to Accountant Thanh Chau (Accountant Mode)
   const accountantLeaveReports = useMemo(() => {
-    const rules = [
-      {
-        key: 'vu',
-        searchNames: ['vũ', 'vu'],
-        displayName: 'Anh Vũ',
-        category: 'Còn từ năm 2025',
-        ruleDesc: 'Còn tồn 12 ngày phép từ năm 2025 chuyển tiếp qua năm 2026. Kế toán lưu ý không tự động gộp phép gối đầu gộp chung.',
-        totalEntitled: 12,
-        usedByChat: 0,
-        remainingByChat: 12,
-        chatQuote: 'a Vũ còn 12 ngày phép. Sang năm không gộp phép nữa.'
-      },
-      {
-        key: 'dung',
-        searchNames: ['dũng', 'dung'],
-        displayName: 'Anh Dũng',
-        category: 'Còn từ năm 2025',
-        ruleDesc: 'Còn dư 10 ngày phép từ năm 2025 chuyển qua 2026.',
-        totalEntitled: 10,
-        usedByChat: 0,
-        remainingByChat: 10,
-        chatQuote: 'a Dũng còn 10 ngày phép.'
-      },
-      {
-        key: 'hao',
-        searchNames: ['hảo', 'hao'],
-        displayName: 'Anh Hảo',
-        category: 'Còn từ năm 2025',
-        ruleDesc: 'Còn dư 6 ngày phép từ năm 2025 chuyển qua 2026.',
-        totalEntitled: 6,
-        usedByChat: 0,
-        remainingByChat: 6,
-        chatQuote: 'a Hảo còn 6 ngày phép.'
-      },
-      {
-        key: 'thuan',
-        searchNames: ['thuận', 'thuan'],
-        displayName: 'Anh Thuận (Thuận Tom)',
-        category: 'Tích lũy năm 2026 (YTD)',
-        ruleDesc: 'Phép năm 2025 dư 2 ngày đã nghỉ hết trong tháng 6/2025 (còn 0). Phép năm 2026 tính đến tháng 7 tích lũy 7 ngày, đã nghỉ 1 ngày trong tháng nên còn 6 ngày phép. Tổng cộng lịch sử đã nghỉ 13 ngày (tính từ năm 2025 đến tháng 7/2026).',
-        totalEntitled: 7,
-        usedByChat: 1,
-        remainingByChat: 6,
-        chatQuote: 'Tính theo năm 2026 thì đến tháng 7 anh có 7 ngày phép, đã nghỉ 1 ngày còn 6 ngày. Tính từ năm 2025 - 7/2026 là 13 ngày anh nghỉ.'
-      },
-      {
-        key: 'nhi',
-        searchNames: ['nhi'],
-        displayName: 'Phạm Thị Anh Nhi',
-        category: 'Đặc cách (Làm việc 1 năm)',
-        ruleDesc: 'Đang học việc không được hưởng phép theo luật, nhưng do làm tròn 1 năm nên công ty ưu ái đặc cách cấp 6 ngày phép, đã nghỉ 2 ngày, còn lại 4 ngày phép.',
-        totalEntitled: 6,
-        usedByChat: 2,
-        remainingByChat: 4,
-        chatQuote: 'Nhi học việc nên theo luật không có ngày phép, nhưng làm được 1 năm nên công ty cho 6 ngày phép, em còn 4 ngày phép.'
-      },
-      {
-        key: 'thuong',
-        searchNames: ['thương', 'thuong'],
-        displayName: 'Chị Thương',
-        category: 'Tích lũy tỷ lệ (11 tháng)',
-        ruleDesc: 'Thâm niên làm việc đạt 11 tháng, được tích lũy theo tỷ lệ 11 ngày phép năm, đã nghỉ 5 ngày, còn lại 6 ngày phép.',
-        totalEntitled: 11,
-        usedByChat: 5,
-        remainingByChat: 6,
-        chatQuote: 'chị Thương làm được 11 tháng thì có 11 phép, giờ còn 6 phép.'
-      },
-      {
-        key: 'thuc',
-        searchNames: ['thức', 'thuc'],
-        displayName: 'Anh Thức',
-        category: 'Tích lũy tỷ lệ (10 tháng)',
-        ruleDesc: 'Thâm niên làm việc đạt 10 tháng, được tích lũy theo tỷ lệ 10 ngày phép năm, chưa sử dụng ngày nào, còn lại 10 ngày phép.',
-        totalEntitled: 10,
-        usedByChat: 0,
-        remainingByChat: 10,
-        chatQuote: 'a Thức làm được 10 tháng thì anh đang có 10 ngày phép.'
+    // Group YTD leave logs by employee name for fast lookup
+    const ytdLeaveLogsByEmp = new Map<string, TimeLog[]>();
+    for (const log of timeLogs) {
+      if (log.status === 'Nghỉ phép') {
+        const logYear = parseInt(log.date.split('-')[0], 10);
+        if (logYear === currentYear) {
+          const empKey = log.employeeName.trim().toLowerCase();
+          if (!ytdLeaveLogsByEmp.has(empKey)) {
+            ytdLeaveLogsByEmp.set(empKey, []);
+          }
+          ytdLeaveLogsByEmp.get(empKey)!.push(log);
+        }
       }
-    ];
+    }
 
-    return rules.map(rule => {
-      const matchedEmp = employees.find(emp => {
-        const empNameLower = emp.name.toLowerCase();
-        return rule.searchNames.some(name => empNameLower.includes(name));
-      });
+    const realDate = new Date();
+    const realYear = realDate.getFullYear();
+    const realMonth = realDate.getMonth() + 1;
+    let capMonth = 12;
+    if (currentYear === realYear) {
+      capMonth = realMonth;
+    } else if (currentYear > realYear) {
+      capMonth = 0;
+    }
 
-      const systemLeaveLogs = matchedEmp ? timeLogs.filter(log => {
-        const [y] = log.date.split('-');
-        const logYear = parseInt(y, 10);
-        return log.employeeName === matchedEmp.name && log.status === 'Nghỉ phép' && logYear === currentYear;
-      }).sort((a, b) => b.date.localeCompare(a.date)) : [];
-
+    return employees.map(emp => {
+      const empKey = emp.name.trim().toLowerCase();
+      const systemLeaveLogs = ytdLeaveLogsByEmp.get(empKey) || [];
       const systemLeaveUsed = systemLeaveLogs.length;
+      
+      let monthsWorkedInSelectedYear = capMonth;
+      const rDate = parseRegisteredDate(emp.registeredAt);
 
+      if (rDate) {
+        if (rDate.year > currentYear) {
+          monthsWorkedInSelectedYear = 0;
+        } else if (rDate.year === currentYear) {
+          monthsWorkedInSelectedYear = Math.max(0, capMonth - rDate.month + 1);
+        }
+      }
+
+      const rLeft = emp.leftAt ? parseRegisteredDate(emp.leftAt) : null;
+      if (rLeft) {
+        if (rLeft.year < currentYear) {
+          monthsWorkedInSelectedYear = 0;
+        } else if (rLeft.year === currentYear) {
+          const startMonth = rDate && rDate.year === currentYear ? rDate.month : 1;
+          const endMonth = Math.min(rLeft.month, capMonth);
+          monthsWorkedInSelectedYear = Math.max(0, endMonth - startMonth + 1);
+        }
+      }
+
+      const carryover = emp.leaveCarryover || 0;
+      const allowance = emp.leaveAllowance !== undefined ? emp.leaveAllowance : monthsWorkedInSelectedYear; // auto accrue
+      const totalEntitled = carryover + allowance;
+      const remainingByChat = totalEntitled - systemLeaveUsed;
+      
       return {
-        ...rule,
-        matchedEmployee: matchedEmp,
+        key: emp.name,
+        displayName: getEmployeeDisplayName(emp.name, isAdmin, false, emp.displayName),
+        category: carryover > 0 ? 'Có phép gối đầu' : 'Phép chuẩn',
+        ruleDesc: carryover > 0 
+          ? `Phép gối đầu: ${carryover} ngày. Phép năm nay: ${allowance} ngày. Tổng cộng: ${totalEntitled} ngày.` 
+          : `Phép năm nay: ${allowance} ngày.`,
+        totalEntitled,
+        usedByChat: systemLeaveUsed, // we trust the system now
+        remainingByChat,
+        chatQuote: '',
+        matchedEmployee: emp,
         systemLeaveUsed,
         systemLeaveLogs,
-        isMatched: !!matchedEmp
+        isMatched: true
       };
     });
   }, [employees, timeLogs, currentYear]);
+
+  const groupedAccountantLeaveReports = useMemo(() => {
+    const filtered = accountantLeaveReports.filter(report => report.isMatched && report.displayName.toLowerCase().includes(leaveSearch.toLowerCase()));
+    const groups: Record<string, typeof filtered> = {};
+    filtered.forEach(r => {
+      const dept = r.matchedEmployee?.department || 'Chưa phân bổ';
+      if (!groups[dept]) groups[dept] = [];
+      groups[dept].push(r);
+    });
+    return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
+  }, [accountantLeaveReports, leaveSearch]);
+
+  const groupedLeaveReports = useMemo(() => {
+    const filtered = leaveReports.filter(report => report.employee.name.toLowerCase().includes(leaveSearch.toLowerCase()));
+    const groups: Record<string, typeof filtered> = {};
+    filtered.forEach(r => {
+      const dept = r.employee.department || 'Chưa phân bổ';
+      if (!groups[dept]) groups[dept] = [];
+      groups[dept].push(r);
+    });
+    return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
+  }, [leaveReports, leaveSearch]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -777,7 +793,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                 <button
                   type="button"
                   onClick={handlePrevMonth}
-                  className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl border border-slate-150 dark:border-slate-800 transition-colors cursor-pointer"
+                  className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl border border-slate-150 dark:border-slate-800 transition-all active:scale-[0.98] cursor-pointer"
                 >
                   <ChevronLeft className="w-4 h-4 text-slate-600 dark:text-slate-400" />
                 </button>
@@ -787,7 +803,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                 <button
                   type="button"
                   onClick={handleNextMonth}
-                  className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl border border-slate-150 dark:border-slate-800 transition-colors cursor-pointer"
+                  className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl border border-slate-150 dark:border-slate-800 transition-all active:scale-[0.98] cursor-pointer"
                 >
                   <ChevronRight className="w-4 h-4 text-slate-600 dark:text-slate-400" />
                 </button>
@@ -809,7 +825,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                         setSelectedEmpName(val);
                       }
                     }}
-                    className="appearance-none pl-3.5 pr-8 py-2 text-xs font-bold bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 dark:text-slate-100 cursor-pointer transition-all"
+                    className="appearance-none pl-3.5 pr-8 py-2 text-xs font-bold bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 dark:text-slate-100 cursor-pointer transition-all active:scale-[0.98]"
                   >
                     <option value="all">👥 Tất cả nhân sự</option>
                     {employees.map(e => (
@@ -1118,12 +1134,19 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                     <form onSubmit={handleBatchSubmit} className="space-y-6">
                       {/* Employee List Container */}
                       <div className="space-y-3.5 max-h-[460px] overflow-y-auto pr-2 custom-scrollbar">
-                        {filteredEmployees.length === 0 ? (
+                        {groupedFilteredEmployees.length === 0 ? (
                           <div className="p-12 text-center text-slate-400 dark:text-slate-500 text-xs italic bg-slate-50/50 dark:bg-slate-950/10 border border-slate-100 dark:border-slate-800/50 rounded-2xl">
                             Không tìm thấy nhân viên nào khớp với từ khóa tìm kiếm.
                           </div>
                         ) : (
-                          filteredEmployees.map(emp => {
+                          groupedFilteredEmployees.map(([dept, emps]) => (
+                            <div key={dept} className="space-y-3.5">
+                              <div className="flex items-center gap-2 mb-2">
+                                <div className="h-[1px] flex-1 bg-slate-200 dark:bg-slate-700"></div>
+                                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{dept}</span>
+                                <div className="h-[1px] flex-1 bg-slate-200 dark:bg-slate-700"></div>
+                              </div>
+                              {emps.map((emp, idx) => {
                             const empStatus = companyStatuses[emp.name] || 'Có đi làm';
                             const empHasOt = !!companyHasOt[emp.name];
                             const empNote = companyNotes[emp.name] || '';
@@ -1131,22 +1154,23 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                             return (
                               <motion.div
                                 key={emp.name}
-                                animate={recentUpdates.has(`${emp.name}-${date}`) ? {
+                                initial={{ opacity: 0, y: 15 }}
+                                animate={{ opacity: 1, y: 0, ...(recentUpdates.has(`${emp.name}-${date}`) ? {
                                   scale: [1, 1.02, 1],
                                   boxShadow: ["0px 0px 0px rgba(0,0,0,0)", "0px 0px 15px rgba(16, 185, 129, 0.4)", "0px 0px 0px rgba(0,0,0,0)"],
                                   backgroundColor: ["transparent", "rgba(16, 185, 129, 0.1)", "transparent"]
-                                } : {}}
-                                transition={{ duration: 1.5, ease: "easeInOut" }}
-                                className="p-4 bg-slate-50/40 dark:bg-slate-950/30 rounded-2xl border border-slate-100 dark:border-slate-800/50 flex flex-col lg:flex-row lg:items-center justify-between gap-4 transition-all hover:bg-slate-50 dark:hover:bg-slate-950/60 hover:border-slate-200/80 dark:hover:border-slate-800"
+                                } : {})}}
+                                transition={{ duration: recentUpdates.has(`${emp.name}-${date}`) ? 1.5 : 0.3, delay: idx * 0.05, ease: "easeInOut" }}
+                                className="p-4 bg-slate-50/40 dark:bg-slate-950/30 rounded-2xl border border-slate-100 dark:border-slate-800/50 flex flex-col lg:flex-row lg:items-center justify-between gap-4 transition-all hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-200/80 dark:hover:border-slate-800"
                               >
                                 {/* Left & Center-Left: Grouped together to keep them close and compact */}
                                 <div className="flex flex-col sm:flex-row sm:items-center gap-4 lg:gap-6 min-w-0 flex-1">
                                   {/* Profile Details */}
-                                  <div className="flex items-center gap-3 min-w-[180px] max-w-[240px] shrink-0">
+                                  <div className="flex items-center gap-3 w-full sm:w-[220px] shrink-0">
                                     <div className="w-9 h-9 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 rounded-xl font-extrabold text-[11px] flex items-center justify-center border border-indigo-100/30 dark:border-indigo-900/10 shrink-0">
                                       {emp.name.split(' ').pop()?.substring(0, 2).toUpperCase() || 'NV'}
                                     </div>
-                                    <div className="min-w-0">
+                                    <div className="min-w-0 flex-1">
                                       <span className="font-extrabold text-xs text-slate-800 dark:text-slate-100 block truncate">{getEmployeeDisplayName(emp.name, isAdmin, false, emp.displayName)}</span>
                                       <span className="text-[10px] text-slate-450 dark:text-slate-500 block font-sans truncate">{emp.role}</span>
                                     </div>
@@ -1167,7 +1191,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                                           onClick={() => {
                                             setCompanyStatuses(prev => ({ ...prev, [emp.name]: opt.value }));
                                           }}
-                                          className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                                          className={`px-3 py-1.5 rounded-lg transition-all active:scale-[0.98] cursor-pointer ${
                                             isActive
                                               ? `${opt.activeClass} font-extrabold`
                                               : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
@@ -1239,7 +1263,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                                             toVal: companyOtTo[emp.name] || '21:00'
                                           });
                                         }}
-                                        className="ml-1 px-3 py-1.5 bg-indigo-500 hover:bg-indigo-600 text-white dark:bg-indigo-600 dark:hover:bg-indigo-500 rounded-xl font-mono font-extrabold text-[10.5px] flex items-center gap-1 cursor-pointer transition-all hover:scale-[1.02] active:scale-95 shadow-sm shrink-0 border border-indigo-400/20"
+                                        className="ml-1 px-3 py-1.5 bg-indigo-500 hover:bg-indigo-600 text-white dark:bg-indigo-600 dark:hover:bg-indigo-500 rounded-xl font-mono font-extrabold text-[10.5px] flex items-center gap-1 cursor-pointer transition-all active:scale-[0.98] hover:scale-[1.02] active:scale-95 shadow-sm shrink-0 border border-indigo-400/20"
                                         title="Bấm để chỉnh sửa giờ tăng ca"
                                       >
                                         <span>{companyOtFrom[emp.name] || '18:00'}</span>
@@ -1263,7 +1287,9 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                                 </div>
                               </motion.div>
                             );
-                          })
+                          })}
+                            </div>
+                          ))
                         )}
                       </div>
 
@@ -1301,7 +1327,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                                 message: 'Đã đặt trạng thái "Có đi làm" cho toàn phòng. Bấm "Lưu Chấm Công Cả Ngày" để hoàn tất!'
                               });
                              }}
-                            className="flex-1 sm:flex-initial px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950/20 dark:hover:bg-emerald-900/30 dark:text-emerald-400 rounded-xl text-xs font-bold border border-emerald-200/50 dark:border-emerald-900/20 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                            className="flex-1 sm:flex-initial px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950/20 dark:hover:bg-emerald-900/30 dark:text-emerald-400 rounded-xl text-xs font-bold border border-emerald-200/50 dark:border-emerald-900/20 transition-all active:scale-[0.98] cursor-pointer flex items-center justify-center gap-1.5"
                           >
                             <span>🟢 Đặt đi làm đủ</span>
                           </button>
@@ -1324,7 +1350,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                                 message: 'Đã đặt trạng thái "Vắng mặt" cho toàn phòng. Bấm "Lưu Chấm Công Cả Ngày" để hoàn tất!'
                               });
                              }}
-                            className="flex-1 sm:flex-initial px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/20 dark:hover:bg-rose-900/30 dark:text-rose-400 rounded-xl text-xs font-bold border border-rose-200/50 dark:border-rose-900/20 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                            className="flex-1 sm:flex-initial px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/20 dark:hover:bg-rose-900/30 dark:text-rose-400 rounded-xl text-xs font-bold border border-rose-200/50 dark:border-rose-900/20 transition-all active:scale-[0.98] cursor-pointer flex items-center justify-center gap-1.5"
                           >
                             <span>🔴 Vắng cả phòng</span>
                           </button>
@@ -1335,14 +1361,14 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                           <button
                             type="button"
                             onClick={() => setIsDrawerOpen(false)}
-                            className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-750 dark:text-slate-200 rounded-full text-xs font-extrabold transition-all cursor-pointer"
+                            className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-750 dark:text-slate-200 rounded-full text-xs font-extrabold transition-all active:scale-[0.98] cursor-pointer"
                           >
                             Hủy bỏ
                           </button>
                           <button
                             type="submit"
                             disabled={isBatchSubmitting}
-                            className="px-8 py-2.5 bg-indigo-600 hover:bg-indigo-500 dark:bg-indigo-500 dark:hover:bg-indigo-400 text-white rounded-full text-xs font-extrabold shadow-md hover:shadow-lg transition-all active:scale-[0.98] disabled:opacity-50 cursor-pointer"
+                            className="px-8 py-2.5 bg-indigo-600 hover:bg-indigo-500 dark:bg-indigo-500 dark:hover:bg-indigo-400 text-white rounded-full text-xs font-extrabold shadow-md hover:shadow-lg transition-all active:scale-[0.98] disabled:opacity-50 active:scale-[0.98] cursor-pointer"
                           >
                             {isBatchSubmitting ? "Đang lưu..." : "Lưu Chấm Công Cả Ngày"}
                           </button>
@@ -1420,7 +1446,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                               onChange={() => setModalStatus(item.value)}
                               className="peer sr-only"
                             />
-                            <div className={`w-full py-2 text-center rounded-xl text-[11px] font-bold border transition-all cursor-pointer ${item.color}`}>
+                            <div className={`w-full py-2 text-center rounded-xl text-[11px] font-bold border transition-all active:scale-[0.98] cursor-pointer ${item.color}`}>
                               {item.label}
                             </div>
                           </label>
@@ -1506,7 +1532,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                                     setModalOtFrom(preset.from);
                                     setModalOtTo(preset.to);
                                   }}
-                                  className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100/85 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 border border-indigo-100/30 dark:border-indigo-900/20 text-[9px] font-bold rounded-md transition-all cursor-pointer"
+                                  className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100/85 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 border border-indigo-100/30 dark:border-indigo-900/20 text-[9px] font-bold rounded-md transition-all active:scale-[0.98] cursor-pointer"
                                 >
                                   {preset.label}
                                 </button>
@@ -1545,7 +1571,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                               key={idx}
                               type="button"
                               onClick={() => setModalNote(suggestNote)}
-                              className="px-2 py-1 bg-slate-50 hover:bg-slate-100 dark:bg-slate-850 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200/50 dark:border-slate-800/40 text-[9px] font-bold rounded-md transition-all cursor-pointer"
+                              className="px-2 py-1 bg-slate-50 hover:bg-slate-100 dark:bg-slate-850 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200/50 dark:border-slate-800/40 text-[9px] font-bold rounded-md transition-all active:scale-[0.98] cursor-pointer"
                             >
                               {suggestNote}
                             </button>
@@ -1560,7 +1586,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                     <button
                       type="button"
                       onClick={() => setEditingEmployeeForBatch(null)}
-                      className="flex-1 py-2 bg-slate-100 hover:bg-slate-200/80 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 rounded-full text-xs font-bold transition-all cursor-pointer"
+                      className="flex-1 py-2 bg-slate-100 hover:bg-slate-200/80 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 rounded-full text-xs font-bold transition-all active:scale-[0.98] cursor-pointer"
                     >
                       Hủy bỏ
                     </button>
@@ -1777,7 +1803,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                           setActiveTimeField('from');
                           setClockMode('hours');
                         }}
-                        className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
+                        className={`p-3.5 rounded-2xl border text-left transition-all active:scale-[0.98] cursor-pointer ${
                           activeTimeField === 'from'
                             ? 'bg-emerald-500/10 border-emerald-500 text-emerald-850 dark:text-emerald-300 ring-2 ring-emerald-500/20'
                             : 'bg-slate-50 dark:bg-slate-950/40 border-slate-100 dark:border-slate-850 text-slate-500 dark:text-slate-450 hover:bg-slate-100/50 dark:hover:bg-slate-800/35'
@@ -1795,7 +1821,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                           setActiveTimeField('to');
                           setClockMode('hours');
                         }}
-                        className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
+                        className={`p-3.5 rounded-2xl border text-left transition-all active:scale-[0.98] cursor-pointer ${
                           activeTimeField === 'to'
                             ? 'bg-indigo-500/10 border-indigo-500 text-indigo-850 dark:text-indigo-300 ring-2 ring-indigo-500/20'
                             : 'bg-slate-50 dark:bg-slate-950/40 border-slate-100 dark:border-slate-850 text-slate-500 dark:text-slate-450 hover:bg-slate-100/50 dark:hover:bg-slate-800/35'
@@ -1898,7 +1924,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                             <button
                               type="button"
                               onClick={() => toggleAmPm(false)}
-                              className={`py-2 text-xs font-bold rounded-lg cursor-pointer transition-all ${
+                              className={`py-2 text-xs font-bold rounded-lg cursor-pointer transition-all active:scale-[0.98] ${
                                 !isPm
                                   ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm'
                                   : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
@@ -1909,7 +1935,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                             <button
                               type="button"
                               onClick={() => toggleAmPm(true)}
-                              className={`py-2 text-xs font-bold rounded-lg cursor-pointer transition-all ${
+                              className={`py-2 text-xs font-bold rounded-lg cursor-pointer transition-all active:scale-[0.98] ${
                                 isPm
                                   ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm'
                                   : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
@@ -1931,14 +1957,14 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                             <button
                               type="button"
                               onClick={() => setClockMode('hours')}
-                              className={`px-2 py-1 text-[9px] font-bold rounded-md cursor-pointer transition-all ${clockMode === 'hours' ? 'bg-indigo-500 text-white shadow-xs' : 'text-slate-450'}`}
+                              className={`px-2 py-1 text-[9px] font-bold rounded-md cursor-pointer transition-all active:scale-[0.98] ${clockMode === 'hours' ? 'bg-indigo-500 text-white shadow-xs' : 'text-slate-450'}`}
                             >
                               Giờ
                             </button>
                             <button
                               type="button"
                               onClick={() => setClockMode('minutes')}
-                              className={`px-2 py-1 text-[9px] font-bold rounded-md cursor-pointer transition-all ${clockMode === 'minutes' ? 'bg-indigo-500 text-white shadow-xs' : 'text-slate-450'}`}
+                              className={`px-2 py-1 text-[9px] font-bold rounded-md cursor-pointer transition-all active:scale-[0.98] ${clockMode === 'minutes' ? 'bg-indigo-500 text-white shadow-xs' : 'text-slate-450'}`}
                             >
                               Phút
                             </button>
@@ -1969,7 +1995,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                                 type="button"
                                 onClick={() => handleClockNumberClick(val)}
                                 style={{ left: `${x}%`, top: `${y}%`, transform: 'translate(-50%, -50%)' }}
-                                className={`absolute w-7 h-7 text-xs font-mono font-black flex items-center justify-center rounded-full transition-all cursor-pointer z-20 ${
+                                className={`absolute w-7 h-7 text-xs font-mono font-black flex items-center justify-center rounded-full transition-all active:scale-[0.98] cursor-pointer z-20 ${
                                   isSelected
                                     ? 'bg-indigo-600 text-white shadow-md scale-110 border border-indigo-400 dark:bg-indigo-500'
                                     : 'text-slate-550 dark:text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-slate-800 dark:hover:text-indigo-400'
@@ -2002,7 +2028,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                               key={idx}
                               type="button"
                               onClick={() => handlePresetClick(preset.from, preset.to)}
-                              className={`px-3 py-2 text-[10px] sm:text-xs font-bold rounded-xl transition-all border cursor-pointer ${
+                              className={`px-3 py-2 text-[10px] sm:text-xs font-bold rounded-xl transition-all border active:scale-[0.98] cursor-pointer ${
                                 isMatch
                                   ? 'bg-indigo-500 border-indigo-500 text-white shadow-sm font-extrabold'
                                   : 'bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-850 text-slate-650 dark:text-slate-300 border-slate-200/60 dark:border-slate-800'
@@ -2020,7 +2046,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                       <button
                         type="button"
                         onClick={() => setCustomTimePicker(null)}
-                        className="flex-1 py-3 bg-slate-100 hover:bg-slate-200/85 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 rounded-full text-xs sm:text-sm font-extrabold transition-all cursor-pointer text-center"
+                        className="flex-1 py-3 bg-slate-100 hover:bg-slate-200/85 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 rounded-full text-xs sm:text-sm font-extrabold transition-all active:scale-[0.98] cursor-pointer text-center"
                       >
                         Hủy bỏ
                       </button>
@@ -2071,22 +2097,25 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
 
             {/* Employee List Scrollable */}
             <div className="flex-1 overflow-y-auto border border-slate-100 dark:border-slate-800/60 rounded-2xl divide-y divide-slate-50 dark:divide-slate-800 pr-1">
-              {filteredEmployees.length === 0 ? (
+              {groupedFilteredEmployees.length === 0 ? (
                 <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-sm">
                   Không tìm thấy nhân viên nào
                 </div>
               ) : (
-                filteredEmployees.map((emp) => (
+                groupedFilteredEmployees.map(([dept, emps]) => (
+                  <div key={dept}>
+                    <div className="bg-slate-50/80 dark:bg-slate-900/40 p-2 text-xs font-bold text-slate-500 uppercase tracking-wider">{dept}</div>
+                    {emps.map(emp => (
                   <button
                     key={emp.name}
                     onClick={() => {
                       setSelectedEmpName(emp.name);
                       setFeedback(null);
                     }}
-                    className={`w-full text-left p-3 flex items-center gap-3 transition-all rounded-xl cursor-pointer ${
+                    className={`w-full text-left p-3 flex items-center gap-3 transition-all active:scale-[0.98] rounded-xl cursor-pointer ${
                       selectedEmpName === emp.name
                         ? 'bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200/50 dark:border-indigo-800/40'
-                        : 'hover:bg-slate-50 dark:hover:bg-slate-850/40'
+                        : 'hover:bg-slate-50 dark:hover:bg-slate-800'
                     }`}
                   >
                     <div className="w-9 h-9 rounded-full bg-indigo-50 dark:bg-indigo-950/60 flex items-center justify-center font-bold text-indigo-600 dark:text-indigo-400 text-sm flex-shrink-0">
@@ -2097,6 +2126,8 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                       <div className="text-xs text-slate-500 dark:text-slate-400">{emp.role}</div>
                     </div>
                   </button>
+                ))}
+                </div>
                 ))
               )}
             </div>
@@ -2191,7 +2222,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                             onChange={() => setStatus(item.value as any)}
                             className="peer sr-only"
                           />
-                          <div className={`w-full py-3.5 text-center rounded-2xl text-xs sm:text-sm font-bold border transition-all cursor-pointer ${item.color}`}>
+                          <div className={`w-full py-3.5 text-center rounded-2xl text-xs sm:text-sm font-bold border transition-all active:scale-[0.98] cursor-pointer ${item.color}`}>
                             {item.value}
                           </div>
                         </label>
@@ -2279,7 +2310,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                         type="button"
                         onClick={handleDeleteLog}
                         disabled={isSubmitting}
-                        className="px-5 py-3 bg-rose-500/10 hover:bg-rose-500/20 dark:bg-rose-500/20 dark:hover:bg-rose-500/30 text-rose-600 dark:text-rose-400 rounded-full text-sm font-bold border border-rose-500/20 transition-all disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+                        className="px-5 py-3 bg-rose-500/10 hover:bg-rose-500/20 dark:bg-rose-500/20 dark:hover:bg-rose-500/30 text-rose-600 dark:text-rose-400 rounded-full text-sm font-bold border border-rose-500/20 transition-all disabled:opacity-50 active:scale-[0.98] cursor-pointer flex items-center gap-1.5"
                       >
                         <Trash2 className="w-4 h-4" />
                         Xóa Ghi Nhận
@@ -2323,7 +2354,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                 setLeaveCalcMode('accountant');
                 setExpandedLeaveEmp(null);
               }}
-              className={`flex-1 py-1.5 px-3 rounded-xl transition-all duration-300 cursor-pointer ${
+              className={`flex-1 py-1.5 px-3 rounded-xl transition-all duration-300 active:scale-[0.98] cursor-pointer ${
                 leaveCalcMode === 'accountant'
                   ? 'bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 text-amber-600 dark:text-amber-400 shadow-sm border border-amber-200/40 dark:border-amber-900/30 font-bold scale-[1.02]'
                   : 'text-slate-500 hover:text-slate-700 hover:bg-white/40 dark:text-slate-400 dark:hover:text-slate-300 dark:hover:bg-slate-900/40'
@@ -2336,7 +2367,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                 setLeaveCalcMode('standard');
                 setExpandedLeaveEmp(null);
               }}
-              className={`flex-1 py-1.5 px-3 rounded-xl transition-all duration-300 cursor-pointer ${
+              className={`flex-1 py-1.5 px-3 rounded-xl transition-all duration-300 active:scale-[0.98] cursor-pointer ${
                 leaveCalcMode === 'standard'
                   ? 'bg-gradient-to-r from-indigo-50 to-sky-50 dark:from-indigo-950/20 dark:to-sky-950/20 text-indigo-600 dark:text-indigo-400 shadow-sm border border-indigo-200/40 dark:border-indigo-900/30 font-bold scale-[1.02]'
                   : 'text-slate-500 hover:text-slate-700 hover:bg-white/40 dark:text-slate-400 dark:hover:text-slate-300 dark:hover:bg-slate-900/40'
@@ -2373,15 +2404,25 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                 Chưa có nhân viên nào trong danh sách hoặc không tìm thấy kết quả phù hợp
               </div>
             ) : (
-              accountantLeaveReports
-                .filter(report => report.isMatched && report.displayName.toLowerCase().includes(leaveSearch.toLowerCase()))
-                .map((report) => {
-                  const isExpanded = expandedLeaveEmp === `acc-${report.key}`;
-                  return (
-                    <div key={report.key} className="transition-colors hover:bg-slate-50/30 dark:hover:bg-slate-850/10">
+              groupedAccountantLeaveReports.map(([dept, reports]) => (
+                <div key={dept} className="flex flex-col">
+                  <div className="bg-slate-50/80 dark:bg-slate-900/40 border-y border-slate-100 dark:border-slate-800/60 p-2 sm:p-3 text-xs font-bold text-amber-600 dark:text-amber-400 flex items-center gap-2">
+                    <div className="w-1.5 h-4 bg-amber-500 rounded-full shadow-[0_0_10px_rgba(245,158,11,0.5)]"></div>
+                    {dept} <span className="px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-[10px] ml-1">{reports.length} nhân sự</span>
+                  </div>
+                  {reports.map((report, idx) => {
+                    const isExpanded = expandedLeaveEmp === `acc-${report.key}`;
+                    return (
+                      <motion.div 
+                        key={report.key} 
+                        initial={{ opacity: 0, y: 15 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.3, delay: idx * 0.02 }}
+                        className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800 border-b border-slate-100 dark:border-slate-800/80 last:border-0"
+                      >
                       <div
                         onClick={() => setExpandedLeaveEmp(isExpanded ? null : `acc-${report.key}`)}
-                        className="p-4.5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 cursor-pointer"
+                        className="p-4.5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 active:scale-[0.98] transition-all cursor-pointer"
                       >
                         <div className="flex items-center gap-3">
                           <div className="w-9 h-9 rounded-full bg-amber-50 dark:bg-amber-950/60 border border-amber-100/60 dark:border-amber-900/40 flex items-center justify-center font-bold text-amber-700 dark:text-amber-400 text-xs shrink-0">
@@ -2473,28 +2514,40 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                           </div>
                         </div>
                       )}
-                    </div>
+                    </motion.div>
                   );
-                })
+                })}
+              </div>
+            ))
             )}
           </div>
         ) : (
           /* Standard calculation list (According to Law) */
           <div className="divide-y divide-slate-100 dark:divide-slate-800/80">
-            {leaveReports.filter(report => report.employee.name.toLowerCase().includes(leaveSearch.toLowerCase())).length === 0 ? (
+            {groupedLeaveReports.length === 0 ? (
               <div className="p-8 text-center text-slate-400 text-xs italic">
                 Chưa có nhân viên nào trong danh sách hoặc không tìm thấy kết quả phù hợp
               </div>
             ) : (
-              leaveReports
-                .filter(report => report.employee.name.toLowerCase().includes(leaveSearch.toLowerCase()))
-                .map((report) => {
-                  const isExpanded = expandedLeaveEmp === `std-${report.employee.name}`;
-                  return (
-                    <div key={report.employee.name} className="transition-colors hover:bg-slate-50/30 dark:hover:bg-slate-850/10">
+              groupedLeaveReports.map(([dept, reports]) => (
+                <div key={dept} className="flex flex-col">
+                  <div className="bg-slate-50/80 dark:bg-slate-900/40 border-y border-slate-100 dark:border-slate-800/60 p-2 sm:p-3 text-xs font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-2">
+                    <div className="w-1.5 h-4 bg-indigo-500 rounded-full shadow-[0_0_10px_rgba(99,102,241,0.5)]"></div>
+                    {dept} <span className="px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-[10px] ml-1">{reports.length} nhân sự</span>
+                  </div>
+                  {reports.map((report, idx) => {
+                    const isExpanded = expandedLeaveEmp === `std-${report.employee.name}`;
+                    return (
+                      <motion.div 
+                        key={report.employee.name} 
+                        initial={{ opacity: 0, y: 15 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.3, delay: idx * 0.02 }}
+                        className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800 border-b border-slate-100 dark:border-slate-800/80 last:border-0"
+                      >
                       <div
                         onClick={() => setExpandedLeaveEmp(isExpanded ? null : `std-${report.employee.name}`)}
-                        className="p-4.5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 cursor-pointer"
+                        className="p-4.5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 active:scale-[0.98] transition-all cursor-pointer"
                       >
                         <div className="flex items-center gap-3">
                           <div className="w-9 h-9 rounded-full bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-100/60 dark:border-indigo-900/40 flex items-center justify-center font-bold text-indigo-700 dark:text-indigo-400 text-xs shrink-0">
@@ -2590,9 +2643,11 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                           </div>
                         </div>
                       )}
-                    </div>
+                    </motion.div>
                   );
-                })
+                })}
+              </div>
+            ))
             )}
           </div>
         )}

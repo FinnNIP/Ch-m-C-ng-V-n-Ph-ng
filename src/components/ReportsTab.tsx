@@ -131,6 +131,7 @@ const ReportsTab = React.memo(function ReportsTab({ accessToken, employees, time
   const [subTab, setSubTab] = useState<'summary' | 'calendar' | 'leave'>('summary');
   const [leaveCalcMode, setLeaveCalcMode] = useState<'standard' | 'accountant'>('standard');
   const [searchTerm, setSearchTerm] = useState<string>("");
+  const [filterDepartment, setFilterDepartment] = useState<string>('Tất cả');
   const [calendarView, setCalendarView] = useState<'grid' | 'list'>('grid');
 
   // Lazy loading states for rendering optimization
@@ -165,9 +166,7 @@ const ReportsTab = React.memo(function ReportsTab({ accessToken, employees, time
   const reportRef = useRef<HTMLDivElement>(null);
   const hiddenReportRef = useRef<HTMLDivElement>(null);
   const [isDownloadingPng, setIsDownloadingPng] = useState(false);
-  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
-  const [isDownloadingExcel, setIsDownloadingExcel] = useState(false);
-
+        
   const handleDownloadPng = useCallback(async () => {
     const targetNode = reportRef.current || hiddenReportRef.current;
     if (!targetNode) return;
@@ -226,7 +225,7 @@ const ReportsTab = React.memo(function ReportsTab({ accessToken, employees, time
   const handleDownloadPdf = useCallback(async () => {
     const targetNode = reportRef.current || hiddenReportRef.current;
     if (!targetNode) return;
-    setIsDownloadingPdf(true);
+    
     try {
       // Temporarily remove .dark to capture beautiful light-mode visual output
       const isDark = document.documentElement.classList.contains('dark');
@@ -271,14 +270,14 @@ const ReportsTab = React.memo(function ReportsTab({ accessToken, employees, time
       console.error('Error generating PDF via jsPDF:', err);
       alert('Có lỗi khi tạo PDF. Vui lòng thử lại.');
     } finally {
-      setIsDownloadingPdf(false);
+      
     }
   }, [selectedMonth, selectedYear]);
 
   // States for PDF Letterhead Customization (Persistent)
   const [pdfCompanyName, setPdfCompanyName] = useState(() => {
     const saved = localStorage.getItem('pdf_company_name');
-    if (!saved || saved === "CÔNG TY SẢN XUẤT PHÒNG VISUAL") {
+    if (!saved) {
       localStorage.setItem('pdf_company_name', "EGYPT");
       return "EGYPT";
     }
@@ -294,7 +293,7 @@ const ReportsTab = React.memo(function ReportsTab({ accessToken, employees, time
   });
   const [pdfHotlineEmail, setPdfHotlineEmail] = useState(() => {
     const saved = localStorage.getItem('pdf_hotline_email');
-    if (!saved || saved === "Hotline: 024.123.4567 | Email: contact@visualroom.com") {
+    if (!saved || saved === "Hotline: 024.123.4567 | Email: contact@company.com") {
       localStorage.setItem('pdf_hotline_email', "Hotline: 0909488487 | Email: dddung487@gmail.com");
       return "Hotline: 0909488487 | Email: dddung487@gmail.com";
     }
@@ -507,6 +506,7 @@ const ReportsTab = React.memo(function ReportsTab({ accessToken, employees, time
       result.push({
         employeeName: emp.name,
         role: emp.role,
+        department: emp.department,
         totalDays: totalDaysInMonth,
         presentDays,
         absentDays,
@@ -522,13 +522,26 @@ const ReportsTab = React.memo(function ReportsTab({ accessToken, employees, time
   }, [employees, timeLogs, selectedMonth, selectedYear, totalDaysInMonth, daysInfo]);
 
   const filteredReports = useMemo(() => {
-    return monthlyReports.filter(r => 
-      r.employeeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      r.role.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  }, [monthlyReports, searchTerm]);
+    return monthlyReports.filter(r => {
+      const emp = employees.find(e => e.name === r.employeeName);
+      const matchSearch = r.employeeName.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          r.role.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (r.department && r.department.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                          (emp?.displayName && emp.displayName.toLowerCase().includes(searchTerm.toLowerCase()));
+      const matchDept = filterDepartment === 'Tất cả' || r.department === filterDepartment || (!r.department && filterDepartment === 'Chưa phân bổ');
+      return matchSearch && matchDept;
+    });
+  }, [monthlyReports, searchTerm, filterDepartment, employees]);
 
-
+  const groupedFilteredReports = useMemo(() => {
+    const groups: Record<string, typeof filteredReports> = {};
+    filteredReports.forEach(r => {
+      const dept = r.department || 'Chưa phân bổ';
+      if (!groups[dept]) groups[dept] = [];
+      groups[dept].push(r);
+    });
+    return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
+  }, [filteredReports]);
 
   const getDetailedRestDaysString = useCallback((report: EmployeeMonthlyReport): string => {
     const leaveList: string[] = [];
@@ -557,14 +570,27 @@ const ReportsTab = React.memo(function ReportsTab({ accessToken, employees, time
     return parts.join(' | ');
   }, [daysInfo]);
 
-  const handleDownloadExcel = useCallback(async () => {
-    setIsDownloadingExcel(true);
+  const handleDownloadExcel = useCallback(async (deptToExport: string = 'Tất cả') => {
+    
     try {
+      const reportsToExport = monthlyReports.filter(report => {
+        if (deptToExport === 'Tất cả') return true;
+        if (deptToExport === 'Chưa phân bổ') return !report.department;
+        return report.department === deptToExport;
+      }).filter(report => {
+        if (searchTerm) {
+          const searchLower = searchTerm.toLowerCase();
+          return report.employeeName.toLowerCase().includes(searchLower) ||
+            report.role.toLowerCase().includes(searchLower);
+        }
+        return true;
+      });
+
       const ExcelJS = await import('exceljs');
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet('Báo Cáo Công Phép');
 
-      const companyHeader = pdfCompanyName || "CÔNG TY SẢN XUẤT PHÒNG VISUAL";
+      const companyHeader = pdfCompanyName || "CÔNG TY SẢN XUẤT";
       const addressHeader = pdfAddress || "Địa chỉ: 41 Hoa Đào Phường Cầu Kiệu";
       const leaveTitle = `BÁO CÁO CHẤM CÔNG & PHÉP - THÁNG ${selectedMonth}/${selectedYear}`;
 
@@ -595,6 +621,7 @@ const ReportsTab = React.memo(function ReportsTab({ accessToken, employees, time
         'STT',
         'Nhân Viên',
         'Chức Vụ',
+        'Bộ Phận',
         'Đi Làm (Công)',
         'Vắng Mặt (Ngày)',
         'Nghỉ Có Phép (Ngày)',
@@ -624,13 +651,13 @@ const ReportsTab = React.memo(function ReportsTab({ accessToken, employees, time
       });
 
       // Define Column widths
-      const colWidths = [8, 25, 20, 16, 16, 18, 32, 18, 45, 16];
+      const colWidths = [8, 25, 20, 18, 16, 16, 18, 32, 18, 45, 16];
       colWidths.forEach((width, index) => {
         worksheet.getColumn(index + 1).width = width;
       });
 
       // Add Data rows
-      filteredReports.forEach((report, idx) => {
+      reportsToExport.forEach((report, idx) => {
         const leaveDetailsStr = getDetailedRestDaysString(report);
         const otDetailsStr = getOtDaysString(report, totalDaysInMonth, selectedYear, selectedMonth);
         
@@ -638,6 +665,7 @@ const ReportsTab = React.memo(function ReportsTab({ accessToken, employees, time
           idx + 1,
           getDisplayNameFromList(report.employeeName, false, employees, true),
           report.role,
+          report.department || '-',
           report.presentDays,
           report.absentDays,
           report.leaveDays,
@@ -675,28 +703,30 @@ const ReportsTab = React.memo(function ReportsTab({ accessToken, employees, time
           } else if (colNumber === 3) {
             cell.alignment = { horizontal: 'left', vertical: 'middle' };
           } else if (colNumber === 4) {
+            cell.alignment = { horizontal: 'left', vertical: 'middle' };
+          } else if (colNumber === 5) {
             cell.alignment = { horizontal: 'center', vertical: 'middle' };
             cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: '059669' } }; // Emerald 600
-          } else if (colNumber === 5) {
+          } else if (colNumber === 6) {
             cell.alignment = { horizontal: 'center', vertical: 'middle' };
             if (report.absentDays > 0) {
               cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: 'DC2626' } }; // Rose 600
             }
-          } else if (colNumber === 6) {
+          } else if (colNumber === 7) {
             cell.alignment = { horizontal: 'center', vertical: 'middle' };
             if (report.leaveDays > 0) {
               cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: 'D97706' } }; // Amber 600
             }
-          } else if (colNumber === 7) {
-            cell.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
           } else if (colNumber === 8) {
+            cell.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+          } else if (colNumber === 9) {
             cell.alignment = { horizontal: 'center', vertical: 'middle' };
             if (report.totalOtHours > 0) {
               cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: '4F46E5' } }; // Indigo 600
             }
-          } else if (colNumber === 9) {
-            cell.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
           } else if (colNumber === 10) {
+            cell.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+          } else if (colNumber === 11) {
             cell.alignment = { horizontal: 'center', vertical: 'middle' };
             if (report.holidayDays > 0) {
               cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: 'DB2777' } }; // Pink 600
@@ -719,9 +749,9 @@ const ReportsTab = React.memo(function ReportsTab({ accessToken, employees, time
       console.error('Error exporting excel:', err);
       alert('Có lỗi khi xuất file Excel. Vui lòng thử lại.');
     } finally {
-      setIsDownloadingExcel(false);
+      
     }
-  }, [filteredReports, selectedMonth, selectedYear, totalDaysInMonth, getDetailedRestDaysString, getOtDaysString, pdfCompanyName, pdfAddress]);
+  }, [monthlyReports, searchTerm, selectedMonth, selectedYear, totalDaysInMonth, getDetailedRestDaysString, getOtDaysString, pdfCompanyName, pdfAddress]);
 
   // Leave Entitlement and Balance calculation according to Labor Law (1 day per month)
   const leaveReports = useMemo(() => {
@@ -751,13 +781,11 @@ const ReportsTab = React.memo(function ReportsTab({ accessToken, employees, time
       const regMonth = parsedReg && parsedReg.year === selectedYear ? parsedReg.month : 1;
       const regYear = parsedReg ? parsedReg.year : selectedYear;
 
-      let monthsWorkedInSelectedYear = 12;
+      let monthsWorkedInSelectedYear = selectedMonth;
       if (selectedYear < regYear) {
         monthsWorkedInSelectedYear = 0;
       } else if (selectedYear === regYear) {
-        monthsWorkedInSelectedYear = Math.max(0, 12 - regMonth + 1);
-      } else {
-        monthsWorkedInSelectedYear = 12;
+        monthsWorkedInSelectedYear = Math.max(0, selectedMonth - regMonth + 1);
       }
 
       const parsedLeft = emp.leftAt ? parseRegisteredDate(emp.leftAt) : null;
@@ -766,7 +794,7 @@ const ReportsTab = React.memo(function ReportsTab({ accessToken, employees, time
           monthsWorkedInSelectedYear = 0;
         } else if (selectedYear === parsedLeft.year) {
           const startMonth = selectedYear === regYear ? regMonth : 1;
-          const endMonth = parsedLeft.month;
+          const endMonth = Math.min(parsedLeft.month, selectedMonth);
           monthsWorkedInSelectedYear = Math.max(0, endMonth - startMonth + 1);
         }
       }
@@ -854,103 +882,31 @@ const ReportsTab = React.memo(function ReportsTab({ accessToken, employees, time
       logs.sort((a, b) => b.date.localeCompare(a.date));
     }
 
-    const rules = [
-      {
-        key: 'vu',
-        searchNames: ['vũ', 'vu'],
-        displayName: 'Anh Vũ',
-        category: 'Gộp phép 2025 & 2026',
-        ruleDesc: 'Đã cộng gộp 12 ngày phép còn dư từ năm 2025 gối đầu và 6 ngày phép tích lũy của năm 2026. Sang năm sau (2027) sẽ xóa hết ngày nghỉ thừa gối đầu không cộng dồn nữa.',
-        totalEntitled: 18,
-        usedByChat: 0,
-        remainingByChat: 18,
-        chatQuote: 'a Vũ còn 12 ngày phép 2025 gối đầu và 6 ngày phép năm 2026.'
-      },
-      {
-        key: 'dung',
-        searchNames: ['dũng', 'dung'],
-        displayName: 'Anh Dũng',
-        category: 'Gộp phép 2025 & 2026',
-        ruleDesc: 'Đã cộng gộp 10 ngày phép còn dư từ năm 2025 và 6 ngày phép tích lũy của năm 2026. Sang năm sau (2027) sẽ xóa hết ngày nghỉ thừa gối đầu.',
-        totalEntitled: 16,
-        usedByChat: 0,
-        remainingByChat: 16,
-        chatQuote: 'a Dũng còn 10 ngày phép 2025 gối đầu và 6 ngày phép năm 2026.'
-      },
-      {
-        key: 'hao',
-        searchNames: ['hảo', 'hao'],
-        displayName: 'Anh Hảo',
-        category: 'Gộp phép 2025 & 2026',
-        ruleDesc: 'Đã cộng gộp 6 ngày phép còn dư từ năm 2025 và 6 ngày phép tích lũy của năm 2026. Sang năm sau (2027) sẽ xóa hết ngày nghỉ thừa gối đầu.',
-        totalEntitled: 12,
-        usedByChat: 0,
-        remainingByChat: 12,
-        chatQuote: 'a Hảo còn 6 ngày phép 2025 gối đầu và 6 ngày phép năm 2026.'
-      },
-      {
-        key: 'thuan',
-        searchNames: ['thuận', 'thuan'],
-        displayName: 'Anh Thuận (Thuận Tom)',
-        category: 'Tích lũy năm 2026 (YTD)',
-        ruleDesc: 'Phép năm 2025 dư 2 ngày đã nghỉ hết trong tháng 6/2025 (còn 0). Phép năm 2026 tính đến tháng 7 tích lũy 7 ngày, đã nghỉ 1 ngày trong tháng nên còn 6 ngày phép. Tổng cộng lịch sử đã nghỉ 13 ngày (tính từ năm 2025 đến tháng 7/2026).',
-        totalEntitled: 7, // Tích lũy 2026 đến tháng 7
-        usedByChat: 1, // Đã dùng 1 ngày nghỉ trong năm 2026
-        remainingByChat: 6,
-        chatQuote: 'Tính theo năm 2026 thì đến tháng 7 anh có 7 ngày phép, đã nghỉ 1 ngày còn 6 ngày. Tính từ năm 2025 - 7/2026 là 13 ngày anh nghỉ.'
-      },
-      {
-        key: 'nhi',
-        searchNames: ['nhi'],
-        displayName: 'Phạm Thị Anh Nhi',
-        category: 'Đặc cách (Làm việc 1 năm)',
-        ruleDesc: 'Đang học việc không được hưởng phép theo luật, nhưng do làm tròn 1 năm nên công ty ưu ái đặc cách cấp 6 ngày phép, đã nghỉ 2 ngày, còn lại 4 ngày phép.',
-        totalEntitled: 6,
-        usedByChat: 2, // 6 total - 4 remaining
-        remainingByChat: 4,
-        chatQuote: 'Nhi học việc nên theo luật không có ngày phép, nhưng làm được 1 năm nên công ty cho 6 ngày phép, em còn 4 ngày phép.'
-      },
-      {
-        key: 'thuong',
-        searchNames: ['thương', 'thuong'],
-        displayName: 'Chị Thương',
-        category: 'Tích lũy tỷ lệ (11 tháng)',
-        ruleDesc: 'Thâm niên làm việc đạt 11 tháng, được tích lũy theo tỷ lệ 11 ngày phép năm, đã nghỉ 5 ngày, còn lại 6 ngày phép.',
-        totalEntitled: 11,
-        usedByChat: 5, // 11 total - 6 remaining
-        remainingByChat: 6,
-        chatQuote: 'chị Thương làm được 11 tháng thì có 11 phép, giờ còn 6 phép.'
-      },
-      {
-        key: 'thuc',
-        searchNames: ['thức', 'thuc'],
-        displayName: 'Anh Thức',
-        category: 'Tích lũy tỷ lệ (10 tháng)',
-        ruleDesc: 'Thâm niên làm việc đạt 10 tháng, được tích lũy theo tỷ lệ 10 ngày phép năm, chưa sử dụng ngày nào, còn lại 10 ngày phép.',
-        totalEntitled: 10,
-        usedByChat: 0,
-        remainingByChat: 10,
-        chatQuote: 'a Thức làm được 10 tháng thì anh đang có 10 ngày phép.'
-      }
-    ];
-
-    return rules.map(rule => {
-      // Find matching employee in real DB
-      const matchedEmp = employees.find(emp => {
-        const empNameLower = emp.name.toLowerCase();
-        return rule.searchNames.some(name => empNameLower.includes(name));
-      });
-
-      const empKey = matchedEmp ? matchedEmp.name.trim().toLowerCase() : '';
-      const systemLeaveLogs = empKey ? (ytdLeaveLogsByEmp.get(empKey) || []) : [];
+    return employees.map(emp => {
+      const empKey = emp.name.trim().toLowerCase();
+      const systemLeaveLogs = ytdLeaveLogsByEmp.get(empKey) || [];
       const systemLeaveUsed = systemLeaveLogs.length;
-
+      
+      const carryover = emp.leaveCarryover || 0;
+      const allowance = emp.leaveAllowance !== undefined ? emp.leaveAllowance : 12; // default 12 if not set
+      const totalEntitled = carryover + allowance;
+      const remainingByChat = totalEntitled - systemLeaveUsed;
+      
       return {
-        ...rule,
-        matchedEmployee: matchedEmp,
+        key: emp.name,
+        displayName: getEmployeeDisplayName(emp.name, isAdmin, false, emp.displayName), // Using standard name
+        category: carryover > 0 ? 'Có phép gối đầu' : 'Phép chuẩn',
+        ruleDesc: carryover > 0 
+          ? `Phép gối đầu: ${carryover} ngày. Phép năm nay: ${allowance} ngày. Tổng cộng: ${totalEntitled} ngày.` 
+          : `Phép năm nay: ${allowance} ngày.`,
+        totalEntitled,
+        usedByChat: systemLeaveUsed, // we trust the system now
+        remainingByChat,
+        chatQuote: '',
+        matchedEmployee: emp,
         systemLeaveUsed,
         systemLeaveLogs,
-        isMatched: !!matchedEmp
+        isMatched: true
       };
     });
   }, [employees, timeLogs, selectedMonth, selectedYear]);
@@ -1050,6 +1006,14 @@ const ReportsTab = React.memo(function ReportsTab({ accessToken, employees, time
   const toggleExpand = (empName: string) => {
     setExpandedEmployeeName(expandedEmployeeName === empName ? null : empName);
   };
+
+  const uniqueDepartments = useMemo(() => {
+    const depts = new Set<string>();
+    employees.forEach(emp => {
+      if (emp.department) depts.add(emp.department);
+    });
+    return ['Tất cả', ...Array.from(depts), 'Chưa phân bổ'];
+  }, [employees]);
 
   return (
     <div className="space-y-8 animate-fadeIn">
@@ -1785,8 +1749,19 @@ const ReportsTab = React.memo(function ReportsTab({ accessToken, employees, time
               </p>
             </div>
             
-            {/* Search Input */}
-            <div className="w-full sm:w-64 relative">
+            {/* Search Input & Filter */}
+            <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
+              <select
+                value={filterDepartment}
+                onChange={(e) => setFilterDepartment(e.target.value)}
+                className="w-full sm:w-48 px-3 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-full focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-850 dark:text-slate-150 font-semibold"
+              >
+                {uniqueDepartments.map(dept => (
+                  <option key={dept} value={dept}>{dept}</option>
+                ))}
+              </select>
+              
+              <div className="w-full sm:w-64 relative">
               <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
@@ -1796,12 +1771,13 @@ const ReportsTab = React.memo(function ReportsTab({ accessToken, employees, time
                 className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-full focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 text-slate-850 dark:text-slate-150 font-semibold"
               />
             </div>
+            </div>
           </div>
 
 
 
           <div onTouchStart={(e) => e.stopPropagation()} onTouchMove={(e) => e.stopPropagation()} onTouchEnd={(e) => e.stopPropagation()} className="overflow-x-auto max-h-[550px] overflow-y-auto custom-scrollbar rounded-2xl border border-slate-150 dark:border-slate-800/60 shadow-inner relative">
-            <table className="no-swipe hidden md:table w-full text-left border-collapse text-xs">
+            <table className="no-swipe hidden md:table min-w-max w-full text-left border-collapse text-xs whitespace-nowrap">
               <thead className="sticky top-0 z-10">
                 <tr className="no-swipe bg-slate-50/95 dark:bg-slate-950/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 font-extrabold text-slate-700 dark:text-slate-300 uppercase text-[10px] tracking-wider">
                   <th className="p-2 sm:p-3 text-center w-10 bg-slate-50/95 dark:bg-slate-950/95 backdrop-blur-md sticky top-0">STT</th>
@@ -1836,46 +1812,64 @@ const ReportsTab = React.memo(function ReportsTab({ accessToken, employees, time
                     </td>
                   </tr>
                 ) : (
-                  filteredReports.map((report, idx) => {
-                    const leaveDetailsStr = getLeaveDaysString(report, totalDaysInMonth);
-                    const restDetailsStr = getDetailedRestDaysString(report);
-                    const otDetailsStr = getOtDaysString(report, totalDaysInMonth, selectedYear, selectedMonth);
-
-                    return (
-                      <tr 
-                        key={report.employeeName} 
-                        className="no-swipe group hover:bg-indigo-50/80 dark:hover:bg-indigo-950/40 hover:shadow-md transition-all duration-150 border-b border-slate-100 dark:border-slate-800/40 last:border-0 font-semibold cursor-pointer relative"
-                      >
-                        <td className="p-2 sm:p-3 text-center font-bold text-slate-400 dark:text-slate-500 font-mono">{idx + 1}</td>
-                        <td className="p-2 sm:p-3 font-extrabold text-slate-900 dark:text-slate-100 text-xs whitespace-nowrap">{getDisplayNameFromList(report.employeeName, isAdmin, employees)}</td>
-                        <td className="p-2 sm:p-3 text-center font-black text-slate-900 dark:text-slate-100 text-xs">
-                          {report.presentDays} <span className="text-[10px] text-slate-400 font-normal">công</span>
-                        </td>
-                        <td className="p-2 sm:p-3 text-center text-rose-600 font-semibold text-xs">
-                          {report.absentDays} <span className="text-[10px] text-slate-400 font-normal">ngày</span>
-                        </td>
-                        <td className="p-2 sm:p-3 text-center font-bold text-amber-600 dark:text-amber-400 text-xs">
-                          {report.leaveDays} <span className="text-[10px] text-slate-400 font-normal">ngày</span>
-                        </td>
-                        <td className="p-2 sm:p-3 text-left">
-                          <span className="text-slate-700 dark:text-slate-300 font-medium text-[11px] leading-snug block whitespace-normal break-words max-w-[200px]">
-                            {restDetailsStr}
-                          </span>
-                        </td>
-                        <td className="p-2 sm:p-3 text-center text-violet-600 dark:text-violet-400 font-bold text-xs">
-                          {report.totalOtHours.toFixed(1)}h
-                        </td>
-                        <td className="p-2 sm:p-3 text-left">
-                          <span className="text-purple-800 dark:text-purple-300 font-semibold text-[11px] leading-snug block whitespace-normal break-words max-w-[240px]">
-                            {otDetailsStr}
-                          </span>
-                        </td>
-                        <td className="p-2 sm:p-3 text-center text-pink-600 dark:text-pink-400 font-semibold text-xs">
-                          {report.holidayDays} <span className="text-[10px] text-slate-400 font-normal">ngày</span>
+                  groupedFilteredReports.map(([dept, reports]) => (
+                    <React.Fragment key={dept}>
+                      <tr className="bg-slate-50/40 dark:bg-slate-900/20 border-b border-slate-100 dark:border-slate-800/60">
+                        <td colSpan={9} className="py-4 px-2">
+                          <div className="flex items-center gap-3 w-full">
+                            <div className="h-[1px] flex-1 bg-indigo-200 dark:bg-indigo-800/50"></div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">{dept}</span>
+                              <span className="px-2.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold whitespace-nowrap">{reports.length} nhân sự</span>
+                            </div>
+                            <div className="h-[1px] flex-1 bg-indigo-200 dark:bg-indigo-800/50"></div>
+                          </div>
                         </td>
                       </tr>
-                    );
-                  })
+                      {reports.map((report, idx) => {
+                        const leaveDetailsStr = getLeaveDaysString(report, totalDaysInMonth);
+                        const restDetailsStr = getDetailedRestDaysString(report);
+                        const otDetailsStr = getOtDaysString(report, totalDaysInMonth, selectedYear, selectedMonth);
+                        return (
+                          <motion.tr 
+                            key={report.employeeName} 
+                            initial={{ opacity: 0, y: 15 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.3, delay: idx * 0.02 }}
+                            className="no-swipe group hover:bg-slate-50 dark:hover:bg-slate-800 hover:shadow-md transition-all duration-150 border-b border-slate-100 dark:border-slate-800/40 last:border-0 font-semibold cursor-pointer relative"
+                          >
+                            <td className="p-2 sm:p-3 text-center font-bold text-slate-400 dark:text-slate-500 font-mono">{idx + 1}</td>
+                            <td className="p-2 sm:p-3 font-extrabold text-slate-900 dark:text-slate-100 text-xs whitespace-nowrap">{getDisplayNameFromList(report.employeeName, isAdmin, employees)}</td>
+                            <td className="p-2 sm:p-3 text-center font-black text-slate-900 dark:text-slate-100 text-xs">
+                              {report.presentDays} <span className="text-[10px] text-slate-400 font-normal">công</span>
+                            </td>
+                            <td className="p-2 sm:p-3 text-center text-rose-600 font-semibold text-xs">
+                              {report.absentDays} <span className="text-[10px] text-slate-400 font-normal">ngày</span>
+                            </td>
+                            <td className="p-2 sm:p-3 text-center font-bold text-amber-600 dark:text-amber-400 text-xs">
+                              {report.leaveDays} <span className="text-[10px] text-slate-400 font-normal">ngày</span>
+                            </td>
+                            <td className="p-2 sm:p-3 text-left">
+                              <span className="text-slate-700 dark:text-slate-300 font-medium text-[11px] leading-snug block whitespace-normal break-words max-w-[200px]">
+                                {restDetailsStr}
+                              </span>
+                            </td>
+                            <td className="p-2 sm:p-3 text-center text-violet-600 dark:text-violet-400 font-bold text-xs">
+                              {report.totalOtHours.toFixed(1)}h
+                            </td>
+                            <td className="p-2 sm:p-3 text-left">
+                              <span className="text-purple-800 dark:text-purple-300 font-semibold text-[11px] leading-snug block whitespace-normal break-words max-w-[240px]">
+                                {otDetailsStr}
+                              </span>
+                            </td>
+                            <td className="p-2 sm:p-3 text-center text-pink-600 dark:text-pink-400 font-semibold text-xs">
+                              {report.holidayDays} <span className="text-[10px] text-slate-400 font-normal">ngày</span>
+                            </td>
+                          </motion.tr>
+                        );
+                      })}
+                    </React.Fragment>
+                  ))
                 )}
               </tbody>
             </table>
@@ -1896,15 +1890,28 @@ const ReportsTab = React.memo(function ReportsTab({ accessToken, employees, time
                   Không tìm thấy nhân viên phù hợp
                 </div>
               ) : (
-                filteredReports.map((report, idx) => {
-                  const leaveDetailsStr = getLeaveDaysString(report, totalDaysInMonth);
-                  const restDetailsStr = getDetailedRestDaysString(report);
+                groupedFilteredReports.map(([dept, reports]) => (
+                  <div key={dept} className="flex flex-col gap-3">
+                    <div className="flex items-center gap-2 p-2 pb-0">
+                      <div className="w-1 h-3 bg-indigo-500 rounded-full shadow-[0_0_10px_rgba(99,102,241,0.5)]"></div>
+                      <h4 className="font-bold text-xs text-indigo-600 dark:text-indigo-400">{dept}</h4>
+                      <span className="px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-[10px] ml-1">{reports.length}</span>
+                    </div>
+                    {reports.map((report, idx) => {
+                      const leaveDetailsStr = getLeaveDaysString(report, totalDaysInMonth);
+                      const restDetailsStr = getDetailedRestDaysString(report);
                   const otDetailsStr = getOtDaysString(report, totalDaysInMonth, selectedYear, selectedMonth);
                   const isExpanded = expandedEmployeeName === report.employeeName;
                   
                   return (
-                    <div key={report.employeeName} className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl p-4 shadow-sm flex flex-col gap-3">
-                      <div className="flex justify-between items-center cursor-pointer" onClick={() => setExpandedEmployeeName(expandedEmployeeName === report.employeeName ? null : report.employeeName)}>
+                    <motion.div 
+                      key={report.employeeName} 
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ duration: 0.2, delay: idx * 0.02 }}
+                      className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl p-4 shadow-sm flex flex-col gap-3"
+                    >
+                      <div className="flex justify-between items-center cursor-pointer active:scale-[0.98] transition-all" onClick={() => setExpandedEmployeeName(expandedEmployeeName === report.employeeName ? null : report.employeeName)}>
                         <div className="flex items-center gap-3">
                           <div className="w-8 h-8 rounded-full bg-indigo-50 dark:bg-indigo-950/60 flex items-center justify-center font-bold text-indigo-700 dark:text-indigo-400 text-xs border border-indigo-100/60 dark:border-indigo-900/40 shrink-0">
                             {idx + 1}
@@ -1956,9 +1963,11 @@ const ReportsTab = React.memo(function ReportsTab({ accessToken, employees, time
                           </div>
                         </div>
                       )}
-                    </div>
+                    </motion.div>
                   );
-                })
+                })}
+                </div>
+              ))
               )}
             </div>
           </div>
@@ -2557,40 +2566,6 @@ const ReportsTab = React.memo(function ReportsTab({ accessToken, employees, time
                 <motion.button
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
-                  onClick={() => {
-                    playConfirmSound();
-                    handleDownloadExcel();
-                  }}
-                  disabled={isDownloadingExcel}
-                  className="px-4.5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-400 text-white rounded-full text-xs font-extrabold shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  {isDownloadingExcel ? (
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <FileSpreadsheet className="w-3.5 h-3.5" />
-                  )}
-                  <span>{isDownloadingExcel ? "Đang tạo Excel..." : "Tải dạng Excel"}</span>
-                </motion.button>
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => {
-                    playConfirmSound();
-                    handleDownloadPdf();
-                  }}
-                  disabled={isDownloadingPdf}
-                  className="px-4.5 py-2 bg-rose-600 hover:bg-rose-500 disabled:bg-rose-400 text-white rounded-full text-xs font-extrabold shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  {isDownloadingPdf ? (
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <FileText className="w-3.5 h-3.5" />
-                  )}
-                  <span>{isDownloadingPdf ? "Đang xuất PDF..." : "Tải dạng PDF"}</span>
-                </motion.button>
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
                   onClick={() => { playConfirmSound(); window.print(); }}
                   className="px-4.5 py-2 bg-slate-800 hover:bg-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 text-white rounded-full text-xs font-extrabold shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                 >
@@ -2609,13 +2584,7 @@ const ReportsTab = React.memo(function ReportsTab({ accessToken, employees, time
               </div>
             </div>
 
-            {/* Print configuration tips (no-print) */}
-            <div className="bg-amber-50/50 dark:bg-amber-950/20 border-b border-amber-100/40 dark:border-amber-900/20 px-6 py-3 text-[11px] text-amber-800 dark:text-amber-400 font-medium flex items-start gap-2 no-print">
-              <span>💡</span>
-              <p>
-                <b>Hướng dẫn xuất PDF chất lượng cao:</b> Trong hộp thoại In hiện ra, hãy chọn điểm đến là <b>"Lưu dưới dạng PDF" (Save as PDF)</b>. Tại mục "Cài đặt khác", đảm bảo đã bật tùy chọn <b>"Đồ họa nền" (Background graphics)</b> và tắt "Tiêu đề và chân trang" (Headers and footers) để có bản báo cáo chuyên nghiệp, sạch sẽ và đẹp mắt nhất.
-              </p>
-            </div>
+            
 
             {/* Scrollable Printable container & side-editor */}
             <div className="flex flex-col lg:flex-row bg-slate-100 dark:bg-slate-900/40 divide-y lg:divide-y-0 lg:divide-x divide-slate-200 dark:divide-slate-850">
@@ -2703,7 +2672,7 @@ const ReportsTab = React.memo(function ReportsTab({ accessToken, employees, time
                     <div className="text-right">
                       <h5 className="font-bold text-[11px] uppercase tracking-wider text-slate-900 dark:text-slate-200">MẪU BÁO CÁO CHUẨN</h5>
                       <p className="text-[10px] text-slate-500 dark:text-slate-450 font-medium">Mã tài liệu: {pdfDocumentCode}</p>
-                      <p className="text-[10px] text-slate-500 dark:text-slate-450 font-medium">Liên kết: Phòng Visual</p>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-450 font-medium">Liên kết: Nhân Sự</p>
                     </div>
                   </div>
 
@@ -2723,7 +2692,7 @@ const ReportsTab = React.memo(function ReportsTab({ accessToken, employees, time
                 {/* Report Metadata */}
                 <div className="grid grid-cols-2 gap-2 sm:p-3 sm:gap-4 bg-slate-50 dark:bg-slate-900/40 p-4.5 rounded-xl text-xs text-slate-700 dark:text-slate-300 border border-slate-100 dark:border-slate-800 mb-6">
                   <div className="space-y-1.5">
-                    <p><b className="text-slate-900 dark:text-slate-200">Bộ phận:</b> Phòng Visual (Visual Department)</p>
+                    <p><b className="text-slate-900 dark:text-slate-200">Bộ phận:</b> {filterDepartment === 'Tất cả' ? 'Tất cả các phòng ban' : filterDepartment}</p>
                     <p><b className="text-slate-900 dark:text-slate-200">Kỳ báo cáo:</b> Tháng {selectedMonth}/{selectedYear}</p>
                     <p><b className="text-slate-900 dark:text-slate-200">Số lượng nhân sự:</b> {stats.activeWorkforce} nhân viên</p>
                   </div>
@@ -2771,27 +2740,43 @@ const ReportsTab = React.memo(function ReportsTab({ accessToken, employees, time
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200 dark:divide-slate-800/60">
-                      {monthlyReports.map((report, idx) => {
-                        const restDetailsStr = getDetailedRestDaysString(report);
-                        const otDetailsStr = getOtDaysString(report, totalDaysInMonth, selectedYear, selectedMonth);
-
-                        return (
-                          <tr 
-                            key={report.employeeName} 
-                            className="no-swipe group hover:bg-indigo-50/80 dark:hover:bg-slate-800 transition-colors border-b border-slate-100 dark:border-slate-800/40 last:border-0 cursor-pointer relative"
-                          >
-                            <td className="p-1.5 sm:p-2.5 text-center font-bold text-slate-500 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-black font-mono transition-colors">{idx + 1}</td>
-                            <td className="p-1.5 sm:p-2.5 font-extrabold text-slate-900 dark:text-white group-hover:text-slate-900 dark:group-hover:text-black text-xs transition-colors">{getDisplayNameFromList(report.employeeName, false, employees, true)}</td>
-                            <td className="p-1.5 sm:p-2.5 text-center font-black text-slate-900 dark:text-white group-hover:text-slate-900 dark:group-hover:text-black transition-colors">{report.presentDays}</td>
-                            <td className="p-1.5 sm:p-2.5 text-center text-rose-600 dark:text-rose-400 group-hover:text-rose-700 dark:group-hover:text-rose-800 font-semibold transition-colors">{report.absentDays}</td>
-                            <td className="p-1.5 sm:p-2.5 text-center font-bold text-amber-700 dark:text-amber-500 group-hover:text-amber-800 dark:group-hover:text-amber-700 transition-colors">{report.leaveDays}</td>
-                            <td className="p-1.5 sm:p-2.5 text-left text-slate-700 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-black font-medium text-[10px] whitespace-normal break-words max-w-[220px] transition-colors">{restDetailsStr}</td>
-                            <td className="p-1.5 sm:p-2.5 text-center text-violet-600 dark:text-violet-400 group-hover:text-violet-800 dark:group-hover:text-violet-950 font-bold transition-colors">{report.totalOtHours.toFixed(1)}h</td>
-                            <td className="p-1.5 sm:p-2.5 text-left text-purple-850 dark:text-purple-300 group-hover:text-purple-950 dark:group-hover:text-purple-950 font-semibold text-[10px] whitespace-normal break-words max-w-[280px] transition-colors">{otDetailsStr}</td>
-                            <td className="p-1.5 sm:p-2.5 text-center text-pink-700 dark:text-pink-400 group-hover:text-pink-900 dark:group-hover:text-pink-800 font-semibold transition-colors">{report.holidayDays}</td>
+                      {groupedFilteredReports.map(([dept, reports]) => (
+                        <React.Fragment key={dept}>
+                          <tr className="bg-slate-50/40 dark:bg-slate-900/20 border-b border-slate-100 dark:border-slate-800/60">
+                            <td colSpan={9} className="py-4 px-2">
+                              <div className="flex items-center gap-3 w-full">
+                                <div className="h-[1px] flex-1 bg-indigo-200 dark:bg-indigo-800/50"></div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">{dept}</span>
+                                  <span className="px-2.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold whitespace-nowrap">{reports.length} nhân sự</span>
+                                </div>
+                                <div className="h-[1px] flex-1 bg-indigo-200 dark:bg-indigo-800/50"></div>
+                              </div>
+                            </td>
                           </tr>
-                        );
-                      })}
+                          {reports.map((report, idx) => {
+                            const restDetailsStr = getDetailedRestDaysString(report);
+                            const otDetailsStr = getOtDaysString(report, totalDaysInMonth, selectedYear, selectedMonth);
+
+                            return (
+                              <tr 
+                                key={report.employeeName} 
+                                className="no-swipe group hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors border-b border-slate-100 dark:border-slate-800/40 last:border-0 cursor-pointer relative"
+                              >
+                                <td className="p-1.5 sm:p-2.5 text-center font-bold text-slate-500 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-black font-mono transition-colors">{idx + 1}</td>
+                                <td className="p-1.5 sm:p-2.5 font-extrabold text-slate-900 dark:text-white group-hover:text-slate-900 dark:group-hover:text-black text-xs transition-colors">{getDisplayNameFromList(report.employeeName, false, employees, true)}</td>
+                                <td className="p-1.5 sm:p-2.5 text-center font-black text-slate-900 dark:text-white group-hover:text-slate-900 dark:group-hover:text-black transition-colors">{report.presentDays}</td>
+                                <td className="p-1.5 sm:p-2.5 text-center text-rose-600 dark:text-rose-400 group-hover:text-rose-700 dark:group-hover:text-rose-800 font-semibold transition-colors">{report.absentDays}</td>
+                                <td className="p-1.5 sm:p-2.5 text-center font-bold text-amber-700 dark:text-amber-500 group-hover:text-amber-800 dark:group-hover:text-amber-700 transition-colors">{report.leaveDays}</td>
+                                <td className="p-1.5 sm:p-2.5 text-left text-slate-700 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-black font-medium text-[10px] whitespace-normal break-words max-w-[220px] transition-colors">{restDetailsStr}</td>
+                                <td className="p-1.5 sm:p-2.5 text-center text-violet-600 dark:text-violet-400 group-hover:text-violet-800 dark:group-hover:text-violet-950 font-bold transition-colors">{report.totalOtHours.toFixed(1)}h</td>
+                                <td className="p-1.5 sm:p-2.5 text-left text-purple-850 dark:text-purple-300 group-hover:text-purple-950 dark:group-hover:text-purple-950 font-semibold text-[10px] whitespace-normal break-words max-w-[280px] transition-colors">{otDetailsStr}</td>
+                                <td className="p-1.5 sm:p-2.5 text-center text-pink-700 dark:text-pink-400 group-hover:text-pink-900 dark:group-hover:text-pink-800 font-semibold transition-colors">{report.holidayDays}</td>
+                              </tr>
+                            );
+                          })}
+                        </React.Fragment>
+                      ))}
                     </tbody>
                   </table>
                 </div>
@@ -2832,7 +2817,7 @@ const ReportsTab = React.memo(function ReportsTab({ accessToken, employees, time
             <div className="text-right">
               <h5 className="font-bold text-[11px] uppercase tracking-wider text-slate-900">MẪU BÁO CÁO CHUẨN</h5>
               <p className="text-[10px] text-slate-500 font-medium">Mã tài liệu: {pdfDocumentCode}</p>
-              <p className="text-[10px] text-slate-500 font-medium">Liên kết: Phòng Visual</p>
+              <p className="text-[10px] text-slate-500 font-medium">Liên kết: Nhân Sự</p>
             </div>
           </div>
 
@@ -2852,7 +2837,7 @@ const ReportsTab = React.memo(function ReportsTab({ accessToken, employees, time
           {/* Report Metadata */}
           <div className="grid grid-cols-2 gap-2 sm:p-3 sm:gap-4 bg-slate-50 p-4.5 rounded-xl text-xs text-slate-700 border border-slate-100 mb-6">
             <div className="space-y-1.5">
-              <p><b className="text-slate-900">Bộ phận:</b> Phòng Visual (Visual Department)</p>
+              <p><b className="text-slate-900">Bộ phận:</b> {filterDepartment === 'Tất cả' ? 'Tất cả các phòng ban' : filterDepartment}</p>
               <p><b className="text-slate-900">Kỳ báo cáo:</b> Tháng {selectedMonth}/{selectedYear}</p>
               <p><b className="text-slate-900">Số lượng nhân sự:</b> {stats.activeWorkforce} nhân viên</p>
             </div>
@@ -2884,8 +2869,8 @@ const ReportsTab = React.memo(function ReportsTab({ accessToken, employees, time
           </div>
 
           {/* Detailed Table */}
-          <div className="mb-8 overflow-hidden rounded-xl border border-slate-200 relative">
-            <table className="no-swipe w-full min-w-[500px] sm:min-w-0 text-left border-collapse text-[11px]">
+          <div className="mb-8 overflow-hidden rounded-xl border border-slate-200 relative overflow-x-auto">
+            <table className="no-swipe w-full min-w-max text-left border-collapse text-[11px] whitespace-nowrap">
               <thead>
                 <tr className="no-swipe bg-slate-100 border-b border-slate-200 font-bold text-slate-700 text-[10px] uppercase">
                   <th className="p-1.5 sm:p-2.5 text-center w-10">STT</th>
@@ -2900,24 +2885,40 @@ const ReportsTab = React.memo(function ReportsTab({ accessToken, employees, time
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {monthlyReports.map((report, idx) => {
-                  const restDetailsStr = getDetailedRestDaysString(report);
-                  const otDetailsStr = getOtDaysString(report, totalDaysInMonth, selectedYear, selectedMonth);
-
-                  return (
-                    <tr key={report.employeeName} className="no-swipe border-b border-slate-100">
-                      <td className="p-1.5 sm:p-2.5 text-center font-bold text-slate-500 font-mono">{idx + 1}</td>
-                      <td className="p-1.5 sm:p-2.5 font-extrabold text-slate-900 text-xs">{getDisplayNameFromList(report.employeeName, false, employees, true)}</td>
-                      <td className="p-1.5 sm:p-2.5 text-center font-black text-slate-900">{report.presentDays}</td>
-                      <td className="p-1.5 sm:p-2.5 text-center text-rose-600 font-semibold">{report.absentDays}</td>
-                      <td className="p-1.5 sm:p-2.5 text-center font-bold text-amber-700">{report.leaveDays}</td>
-                      <td className="p-1.5 sm:p-2.5 text-left text-slate-700 font-medium text-[10px] whitespace-normal break-words max-w-[220px]">{restDetailsStr}</td>
-                      <td className="p-1.5 sm:p-2.5 text-center text-violet-600 font-bold">{report.totalOtHours.toFixed(1)}h</td>
-                      <td className="p-1.5 sm:p-2.5 text-left text-purple-850 font-semibold text-[10px] whitespace-normal break-words max-w-[280px]">{otDetailsStr}</td>
-                      <td className="p-1.5 sm:p-2.5 text-center text-pink-700 font-semibold">{report.holidayDays}</td>
+                {groupedFilteredReports.map(([dept, reports]) => (
+                  <React.Fragment key={dept}>
+                    <tr className="bg-slate-50/40 border-b border-slate-100">
+                      <td colSpan={9} className="py-4 px-2">
+                        <div className="flex items-center gap-3 w-full">
+                          <div className="h-[1px] flex-1 bg-indigo-200"></div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider">{dept}</span>
+                            <span className="px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold whitespace-nowrap">{reports.length} nhân sự</span>
+                          </div>
+                          <div className="h-[1px] flex-1 bg-indigo-200"></div>
+                        </div>
+                      </td>
                     </tr>
-                  );
-                })}
+                    {reports.map((report, idx) => {
+                      const restDetailsStr = getDetailedRestDaysString(report);
+                      const otDetailsStr = getOtDaysString(report, totalDaysInMonth, selectedYear, selectedMonth);
+
+                      return (
+                        <tr key={report.employeeName} className="no-swipe border-b border-slate-100">
+                          <td className="p-1.5 sm:p-2.5 text-center font-bold text-slate-500 font-mono">{idx + 1}</td>
+                          <td className="p-1.5 sm:p-2.5 font-extrabold text-slate-900 text-xs">{getDisplayNameFromList(report.employeeName, false, employees, true)}</td>
+                          <td className="p-1.5 sm:p-2.5 text-center font-black text-slate-900">{report.presentDays}</td>
+                          <td className="p-1.5 sm:p-2.5 text-center text-rose-600 font-semibold">{report.absentDays}</td>
+                          <td className="p-1.5 sm:p-2.5 text-center font-bold text-amber-700">{report.leaveDays}</td>
+                          <td className="p-1.5 sm:p-2.5 text-left text-slate-700 font-medium text-[10px] whitespace-normal break-words max-w-[220px]">{restDetailsStr}</td>
+                          <td className="p-1.5 sm:p-2.5 text-center text-violet-600 font-bold">{report.totalOtHours.toFixed(1)}h</td>
+                          <td className="p-1.5 sm:p-2.5 text-left text-purple-850 font-semibold text-[10px] whitespace-normal break-words max-w-[280px]">{otDetailsStr}</td>
+                          <td className="p-1.5 sm:p-2.5 text-center text-pink-700 font-semibold">{report.holidayDays}</td>
+                        </tr>
+                      );
+                    })}
+                  </React.Fragment>
+                ))}
               </tbody>
             </table>
           </div>

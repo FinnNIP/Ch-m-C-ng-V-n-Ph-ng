@@ -102,13 +102,26 @@ export function getEmployeeDisplayName(
   forExport: boolean = false,
   customDisplayName?: string
 ): string {
+  // 1. If a custom display name is explicitly set by the user, always use it.
+  if (customDisplayName && customDisplayName.trim().length > 0) {
+    return customDisplayName.trim();
+  }
+
+  // 2. If a custom display name is stored in local storage, always use it.
+  const dict = getStoredExportNames();
+  const trimmed = fullName.trim();
+  if (dict[trimmed] && dict[trimmed].trim().length > 0) {
+    return dict[trimmed].trim();
+  }
+
+  // 3. Fallbacks when NO custom name is defined:
   if (forExport) {
-    return getExportName(fullName, customDisplayName);
+    return formatGuestName(trimmed);
   }
   if (isAdmin) {
     return fullName;
   }
-  return getExportName(fullName, customDisplayName);
+  return formatGuestName(trimmed);
 }
 
 /**
@@ -121,6 +134,5 @@ export function getDisplayNameFromList(
   forExport: boolean = false
 ): string {
   const emp = employees?.find(e => e.name.trim().toLowerCase() === fullName.trim().toLowerCase());
-  if (emp?.displayName) return emp.displayName;
   return getEmployeeDisplayName(fullName, isAdmin, forExport, emp?.displayName);
 }

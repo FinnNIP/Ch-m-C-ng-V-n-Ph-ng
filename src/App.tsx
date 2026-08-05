@@ -64,7 +64,8 @@ import {
   CheckCircle2,
   X,
   Volume2,
-  VolumeX
+  VolumeX,
+  Trash2
 } from 'lucide-react';
 import { playTabSound, playConfirmSound, isSoundEnabled, setSoundEnabled } from './sound';
 
@@ -834,12 +835,18 @@ export default function App() {
 
     const performBackup = () => {
       try {
+        let employeeLastActions = {};
+        try {
+          employeeLastActions = JSON.parse(localStorage.getItem('employee_last_actions') || '{}');
+        } catch (e) {}
+        
         const backupData = {
           timestamp: new Date().toISOString(),
           version: "backup-v1",
           employees,
           timeLogs,
-          spreadsheetId: spreadsheetId || localStorage.getItem('cached_spreadsheet_id') || ''
+          spreadsheetId: spreadsheetId || localStorage.getItem('cached_spreadsheet_id') || '',
+          employeeLastActions
         };
         localStorage.setItem('local_backup_data', JSON.stringify(backupData));
         const now = new Date();
@@ -865,12 +872,18 @@ export default function App() {
 
   const downloadBackupJSON = () => {
     try {
+      let employeeLastActions = {};
+      try {
+        employeeLastActions = JSON.parse(localStorage.getItem('employee_last_actions') || '{}');
+      } catch (e) {}
+      
       const backupData = {
         timestamp: new Date().toISOString(),
         version: "backup-v1",
         employees,
         timeLogs,
-        spreadsheetId: spreadsheetId || localStorage.getItem('cached_spreadsheet_id') || ''
+        spreadsheetId: spreadsheetId || localStorage.getItem('cached_spreadsheet_id') || '',
+        employeeLastActions
       };
       const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -994,6 +1007,9 @@ export default function App() {
           localStorage.setItem('cached_employees', JSON.stringify(backupData.employees));
           if (backupData.timeLogs) {
             localStorage.setItem('cached_timelogs', JSON.stringify(backupData.timeLogs));
+          }
+          if (backupData.employeeLastActions) {
+            localStorage.setItem('employee_last_actions', JSON.stringify(backupData.employeeLastActions));
           }
 
           setIsLoading(true);
@@ -1153,10 +1169,7 @@ export default function App() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2, duration: 0.5 }}
             >
-              <h1 className="font-sans font-black text-2xl sm:text-3xl text-slate-900 dark:text-slate-100 tracking-tight leading-none pb-2 inline-block border-b-2 border-transparent gradient-border-image">Chấm Công Phòng Visual</h1>
-              <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-450 mt-2 max-w-md">
-                Cổng thông tin chấm công hàng ngày, tra cứu ngày phép gối đầu và phân tích thống kê OT tự động.
-              </p>
+              <h1 className="font-sans font-black text-2xl sm:text-3xl text-slate-900 dark:text-slate-100 tracking-tight leading-none pb-2 inline-block border-b-2 border-transparent gradient-border-image">Chấm Công Văn Phòng</h1>
             </motion.div>
 
             {/* Elegant Real-time Digital Clock */}
@@ -1484,7 +1497,7 @@ export default function App() {
           
           <h2 className="font-sans font-extrabold text-xl text-slate-800 dark:text-slate-100 mb-3">Quyền truy cập bị từ chối ⚠️</h2>
           <p className="text-slate-500 dark:text-slate-400 text-sm mb-6 leading-relaxed">
-            Tài khoản email <strong className="text-slate-800 dark:text-slate-200">{user.email}</strong> chưa được đăng ký trong danh sách được phép truy cập của Phòng Visual.
+            Tài khoản email <strong className="text-slate-800 dark:text-slate-200">{user.email}</strong> chưa được đăng ký trong danh sách được phép truy cập của hệ thống.
           </p>
           
           <div className="bg-slate-50 dark:bg-slate-950/40 border border-slate-100 dark:border-slate-800/60 rounded-2xl p-4 text-xs text-left mb-6 leading-relaxed text-slate-600 dark:text-slate-400 w-full">
@@ -1521,7 +1534,7 @@ export default function App() {
           
           <h2 className="font-sans font-extrabold text-xl text-slate-800 dark:text-slate-100 mb-2">Nhập mật khẩu phòng ban</h2>
           <p className="text-slate-500 dark:text-slate-400 text-xs text-center mb-6 leading-relaxed">
-            Dữ liệu phòng Visual đã được khóa bảo mật. Vui lòng nhập mật khẩu được đồng nghiệp cung cấp để tiếp tục.
+            Dữ liệu hệ thống đã được khóa bảo mật. Vui lòng nhập mật khẩu được đồng nghiệp cung cấp để tiếp tục.
           </p>
           
           <form 
@@ -1669,7 +1682,6 @@ export default function App() {
                       </span>
                     )}
                   </div>
-                  <span className="text-[9px] sm:text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold uppercase tracking-wider block leading-none whitespace-nowrap mt-0.5 sm:mt-1">Phòng Visual</span>
                 </div>
               </div>
               
@@ -2007,7 +2019,7 @@ export default function App() {
           <div className="bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100/70 dark:border-indigo-900/40 rounded-2xl p-4.5 mb-6 flex items-start gap-3 text-indigo-800 dark:text-indigo-300 text-xs shadow-sm">
             <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0 text-indigo-600 dark:text-indigo-400" />
             <div className="space-y-1">
-              <strong>Mẹo quản lý phòng Visual:</strong> Dữ liệu chấm công và tăng ca (OT) được cập nhật đồng thời lên <strong>Google Sheets</strong> để đảm bảo tính minh bạch.
+              <strong>Mẹo quản lý hệ thống:</strong> Dữ liệu chấm công và tăng ca (OT) được cập nhật đồng thời lên <strong>Google Sheets</strong> để đảm bảo tính minh bạch.
             </div>
           </div>
         )}
@@ -2075,7 +2087,7 @@ export default function App() {
       {/* Footer */}
       <footer className="bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800/80 py-6 mt-12 text-center text-xs text-slate-400 dark:text-slate-500 font-mono transition-colors duration-300">
         <div className="max-w-7xl mx-auto px-4">
-          Bảng Chấm Công Phòng Visual
+          Bảng Chấm Công Văn Phòng
           {role === 'admin' && (
             <>
               {" • Google Sheets ID: "}
@@ -2162,6 +2174,28 @@ export default function App() {
                         className="absolute inset-0 opacity-0 cursor-pointer"
                       />
                     </label>
+                  </div>
+
+                  <div className="pt-2">
+                    <button
+                      onClick={() => {
+                        if (window.confirm('Bạn có chắc chắn muốn xóa toàn bộ cache cục bộ? Thao tác này sẽ tải lại trang và lấy dữ liệu mới nhất từ Google Sheets.')) {
+                          localStorage.removeItem('cached_employees');
+                          localStorage.removeItem('cached_timelogs');
+                          localStorage.removeItem('local_backup_data');
+                          localStorage.removeItem('cached_spreadsheet_id');
+                          localStorage.removeItem('cache_timestamp');
+                          window.location.reload();
+                        }
+                      }}
+                      className="w-full h-11 flex items-center justify-center gap-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/30 dark:hover:bg-rose-900/30 text-rose-700 dark:text-rose-400 font-bold rounded-2xl transition-all cursor-pointer text-xs border border-rose-100/30 dark:border-rose-900/10 shadow-sm hover:scale-[1.02]"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Xóa Cache Dữ Liệu
+                    </button>
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-2 text-center">
+                      Dùng khi bạn gặp vấn đề không đồng bộ dữ liệu được với Google Sheets.
+                    </p>
                   </div>
 
                   <div className="border-t border-slate-100 dark:border-slate-800/80 pt-5 flex justify-end">

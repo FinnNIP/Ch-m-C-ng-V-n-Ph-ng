@@ -149,7 +149,7 @@ export default function AiAssistant({ employees, timeLogs, selectedMonth, select
                   <Bot className="w-5 h-5 text-purple-300" />
                 </div>
                 <div>
-                  <h4 className="font-sans font-bold text-sm tracking-tight">Trợ lý Chấm Công Visual</h4>
+                  <h4 className="font-sans font-bold text-sm tracking-tight">Trợ lý Chấm Công</h4>
                   <div className="flex items-center gap-1.5 mt-0.5">
                     <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-ping" />
                     <span className="text-[10px] text-purple-200">Powered by Gemini 3.5</span>

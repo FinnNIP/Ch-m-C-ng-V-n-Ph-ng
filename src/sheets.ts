@@ -1,5 +1,26 @@
 import { Employee, TimeLog } from './types';
 
+export function recordEmployeeAction(employeeName: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    const records = JSON.parse(localStorage.getItem('employee_last_actions') || '{}');
+    records[employeeName.trim()] = new Date().toISOString();
+    localStorage.setItem('employee_last_actions', JSON.stringify(records));
+  } catch(e) {}
+}
+
+export function recordMultipleEmployeeActions(employeeNames: string[]) {
+  if (typeof window === 'undefined') return;
+  try {
+    const records = JSON.parse(localStorage.getItem('employee_last_actions') || '{}');
+    const now = new Date().toISOString();
+    for (const name of employeeNames) {
+      records[name.trim()] = now;
+    }
+    localStorage.setItem('employee_last_actions', JSON.stringify(records));
+  } catch(e) {}
+}
+
 export const DEFAULT_SPREADSHEET_ID = "1WBVOBjsnSOEGKwTuKzf1LVH0ErOdzmAUKk2Bg9MtoTs";
 
 export function getSpreadsheetId(): string {
@@ -41,7 +62,11 @@ async function googleFetch(url: string, accessToken: string, options: RequestIni
     ...options.headers,
   };
 
-  const response = await fetch(url, { ...options, headers });
+  const response = await fetch(url, { 
+    cache: 'no-store',
+    ...options, 
+    headers 
+  });
   if (!response.ok) {
     const errorBody = await response.text();
     throw new Error(`Google API error: ${response.status} ${response.statusText} - ${errorBody}`);
@@ -114,8 +139,8 @@ export async function checkAndSetupSheets(accessToken: string): Promise<void> {
     if (!hasEmployeesSheet) {
       await writeSheetHeaders(
         accessToken,
-        "DanhSachNhanVien!A1:F1",
-        ["Họ Và Tên", "Chức Vụ", "Ngày Đăng Ký", "Ngày Rời Khỏi", "Quỹ Phép Năm", "Phép Tồn Năm Trước", "Tên Hiển Thị (Guest)"]
+        "DanhSachNhanVien!A1:H1",
+        ["Họ Và Tên", "Chức Vụ", "Ngày Đăng Ký", "Ngày Rời Khỏi", "Quỹ Phép Năm", "Phép Tồn Năm Trước", "Tên Hiển Thị (Guest)", "Bộ Phận"]
       );
     }
 
@@ -240,7 +265,7 @@ async function writeSheetHeaders(accessToken: string, range: string, headers: st
 }
 
 async function getLocalState(): Promise<any> {
-  const response = await fetch('/api/app-state');
+  const response = await fetch('/api/app-state', { cache: 'no-store' });
   if (!response.ok) {
     throw new Error("Lỗi kết nối máy chủ");
   }
@@ -280,7 +305,7 @@ export async function getEmployees(accessToken: string): Promise<Employee[]> {
   const spreadsheetId = getSpreadsheetId();
   try {
     const data = await googleFetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/DanhSachNhanVien!A2:G1000`,
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/DanhSachNhanVien!A2:H1000`,
       accessToken
     );
 
@@ -293,6 +318,7 @@ export async function getEmployees(accessToken: string): Promise<Employee[]> {
       leaveAllowance: row[4] ? Number(row[4]) : undefined,
       leaveCarryover: row[5] ? Number(row[5]) : undefined,
       displayName: row[6] || undefined,
+      department: row[7] || undefined,
       rowIndex: idx + 2
     })).filter((emp: Employee) => emp.name !== "");
 
@@ -316,7 +342,7 @@ export async function addEmployee(accessToken: string, employee: Employee): Prom
     return;
   }
   const spreadsheetId = getSpreadsheetId();
-  const range = "DanhSachNhanVien!A:G";
+  const range = "DanhSachNhanVien!A:H";
   const values = [
     [
       employee.name,
@@ -325,18 +351,17 @@ export async function addEmployee(accessToken: string, employee: Employee): Prom
       employee.leftAt || "",
       employee.leaveAllowance !== undefined ? employee.leaveAllowance : "",
       employee.leaveCarryover !== undefined ? employee.leaveCarryover : "",
-      employee.displayName || ""
+      employee.displayName || "",
+      employee.department || ""
     ]
   ];
 
   await googleFetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED`,
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
     accessToken,
     {
       method: 'POST',
       body: JSON.stringify({
-        range,
-        majorDimension: "ROWS",
         values
       })
     }
@@ -404,7 +429,7 @@ export async function saveEmployeesOrder(accessToken: string, employees: Employe
     return;
   }
   const spreadsheetId = getSpreadsheetId();
-  const range = `DanhSachNhanVien!A2:G${employees.length + 1}`;
+  const range = `DanhSachNhanVien!A2:H${employees.length + 1}`;
   
   const values = employees.map(emp => [
     emp.name,
@@ -413,13 +438,14 @@ export async function saveEmployeesOrder(accessToken: string, employees: Employe
     emp.leftAt || "",
     emp.leaveAllowance !== undefined ? emp.leaveAllowance : "",
     emp.leaveCarryover !== undefined ? emp.leaveCarryover : "",
-    emp.displayName || ""
+    emp.displayName || "",
+    emp.department || ""
   ]);
 
   // First, clear the existing range to make sure any extra old rows are wiped if size decreased
   try {
     await googleFetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/DanhSachNhanVien!A2:G1000:clear`,
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/DanhSachNhanVien!A2:H1000:clear`,
       accessToken,
       { method: 'POST' }
     );
@@ -456,7 +482,8 @@ export async function updateEmployee(
   newLeftAt: string,
   newLeaveAllowance?: number,
   newLeaveCarryover?: number,
-  newDisplayName?: string
+  newDisplayName?: string,
+  newDepartment?: string
 ): Promise<void> {
   if (!accessToken || accessToken === 'local') {
     const data = await getLocalState();
@@ -469,7 +496,9 @@ export async function updateEmployee(
         registeredAt: newRegisteredAt,
         leftAt: newLeftAt || undefined,
         leaveAllowance: newLeaveAllowance,
-        leaveCarryover: newLeaveCarryover
+        leaveCarryover: newLeaveCarryover,
+        department: newDepartment || undefined,
+        displayName: newDisplayName || undefined
       };
       
       // Cascade name change in logs
@@ -491,8 +520,8 @@ export async function updateEmployee(
     throw new Error("Không tìm thấy dòng tương ứng để cập nhật.");
   }
 
-  // 1. Update the employee row (A is name, B is role, C is registeredAt, D is leftAt, E is leaveAllowance, F is leaveCarryover)
-  const range = `DanhSachNhanVien!A${rowIndex}:G${rowIndex}`;
+  // 1. Update the employee row (A to H)
+  const range = `DanhSachNhanVien!A${rowIndex}:H${rowIndex}`;
   const values = [[
     newName, 
     newRole, 
@@ -500,7 +529,8 @@ export async function updateEmployee(
     newLeftAt, 
     newLeaveAllowance !== undefined ? newLeaveAllowance : "",
     newLeaveCarryover !== undefined ? newLeaveCarryover : "",
-    newDisplayName || ""
+    newDisplayName || "",
+    newDepartment || ""
   ]];
 
   await googleFetch(
@@ -569,15 +599,28 @@ export async function getTimeLogs(accessToken: string): Promise<TimeLog[]> {
     );
 
     const rows = data.values || [];
-    return rows.map((row: any, index: number) => ({
-      employeeName: row[0] || "",
-      date: row[1] || "",
-      status: (row[2] || "Có đi làm") as 'Có đi làm' | 'Không đi làm' | 'Nghỉ phép',
-      otFrom: row[3] || "",
-      otTo: row[4] || "",
-      note: row[5] || "",
-      rowIndex: index + 2
-    })).filter((log: TimeLog) => log.employeeName !== "");
+    return rows.map((row: any, index: number) => {
+      let logDate = row[1] || "";
+      if (logDate.includes('/')) {
+        const parts = logDate.split('/');
+        if (parts.length === 3 && parts[2].length === 4) {
+          // DD/MM/YYYY -> YYYY-MM-DD
+          logDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+        } else if (parts.length === 3 && parts[0].length === 4) {
+          // YYYY/MM/DD -> YYYY-MM-DD
+          logDate = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+        }
+      }
+      return {
+        employeeName: row[0] || "",
+        date: logDate,
+        status: (row[2] || "Có đi làm") as 'Có đi làm' | 'Không đi làm' | 'Nghỉ phép',
+        otFrom: row[3] || "",
+        otTo: row[4] || "",
+        note: row[5] || "",
+        rowIndex: index + 2
+      };
+    }).filter((log: TimeLog) => log.employeeName !== "");
 
   } catch (error) {
     console.error("Lỗi lấy nhật ký chấm công từ Sheet:", error);
@@ -589,6 +632,7 @@ export async function getTimeLogs(accessToken: string): Promise<TimeLog[]> {
  * Update an existing timekeeping log in Google Sheet
  */
 export async function updateTimeLog(accessToken: string, log: TimeLog): Promise<void> {
+  recordEmployeeAction(log.employeeName);
   if (!accessToken || accessToken === 'local') {
     const data = await getLocalState();
     const logIndex = data.timeLogs.findIndex((l: any) => l.rowIndex === log.rowIndex);
@@ -852,13 +896,11 @@ export async function saveDayAttendance(
     ]);
 
     await googleFetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/NhatKyChamCong!A:F:append?valueInputOption=USER_ENTERED`,
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/NhatKyChamCong!A:F:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
       accessToken,
       {
         method: 'POST',
         body: JSON.stringify({
-          range: "NhatKyChamCong!A:F",
-          majorDimension: "ROWS",
           values
         })
       }
@@ -870,6 +912,7 @@ export async function saveDayAttendance(
  * Add a new timekeeping log to Google Sheet
  */
 export async function addTimeLog(accessToken: string, log: TimeLog): Promise<void> {
+  recordEmployeeAction(log.employeeName);
   if (!accessToken || accessToken === 'local') {
     const data = await getLocalState();
     const newLog = { ...log };
@@ -893,13 +936,11 @@ export async function addTimeLog(accessToken: string, log: TimeLog): Promise<voi
   ];
 
   await googleFetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED`,
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
     accessToken,
     {
       method: 'POST',
       body: JSON.stringify({
-        range,
-        majorDimension: "ROWS",
         values
       })
     }
@@ -923,7 +964,7 @@ export async function addEmployeesBulk(accessToken: string, employees: Employee[
     return;
   }
   const spreadsheetId = getSpreadsheetId();
-  const range = "DanhSachNhanVien!A:G";
+  const range = "DanhSachNhanVien!A:H";
   const values = employees.map(emp => [
     emp.name,
     emp.role,
@@ -931,17 +972,16 @@ export async function addEmployeesBulk(accessToken: string, employees: Employee[
     emp.leftAt || "",
     emp.leaveAllowance !== undefined ? emp.leaveAllowance : "",
     emp.leaveCarryover !== undefined ? emp.leaveCarryover : "",
-    emp.displayName || ""
+    emp.displayName || "",
+    emp.department || ""
   ]);
 
   await googleFetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED`,
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
     accessToken,
     {
       method: 'POST',
       body: JSON.stringify({
-        range,
-        majorDimension: "ROWS",
         values
       })
     }
@@ -953,6 +993,7 @@ export async function addEmployeesBulk(accessToken: string, employees: Employee[
  */
 export async function addTimeLogsBulk(accessToken: string, logs: TimeLog[]): Promise<void> {
   if (logs.length === 0) return;
+  recordMultipleEmployeeActions(logs.map(log => log.employeeName));
   if (!accessToken || accessToken === 'local') {
     const data = await getLocalState();
     let maxRow = data.timeLogs.reduce((max: number, l: any) => Math.max(max, l.rowIndex || 0), 1);
@@ -976,13 +1017,11 @@ export async function addTimeLogsBulk(accessToken: string, logs: TimeLog[]): Pro
   ]);
 
   await googleFetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED`,
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
     accessToken,
     {
       method: 'POST',
       body: JSON.stringify({
-        range,
-        majorDimension: "ROWS",
         values
       })
     }
@@ -1287,7 +1326,7 @@ export async function deleteAllData(accessToken: string): Promise<void> {
   const spreadsheetId = getSpreadsheetId();
   try {
     await googleFetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/DanhSachNhanVien!A2:G1000:clear`,
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/DanhSachNhanVien!A2:H1000:clear`,
       accessToken,
       { method: 'POST' }
     );

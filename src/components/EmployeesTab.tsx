@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Employee } from '../types';
 import { addEmployee, deleteEmployee, updateEmployee, saveEmployeesOrder, deleteAllData } from '../sheets';
-import { Search, User, Briefcase, UserPlus, Calendar, Trash2, Edit2, ChevronUp, ChevronDown, LayoutGrid, List } from 'lucide-react';
+import { Search, User, Briefcase, UserPlus, Calendar, Trash2, Edit2, ChevronUp, ChevronDown, LayoutGrid, List, X, Sliders, Settings, Check } from 'lucide-react';
 import DatePicker from './DatePicker';
 import { playConfirmSound, playTabSound } from '../sound';
 import { RandomLoader } from './RandomLoader';
@@ -26,6 +26,7 @@ function SkeletonEmployeesList({ viewMode }: { viewMode: 'grid' | 'table' }) {
                 <th className="py-4 px-4 whitespace-nowrap text-center w-12">STT</th>
                 <th className="py-4 px-4 whitespace-nowrap">Họ & Tên Nhân Viên</th>
                 <th className="py-4 px-4 whitespace-nowrap">Chức Vụ</th>
+                <th className="py-4 px-4 whitespace-nowrap">Bộ Phận</th>
                 <th className="py-4 px-4 whitespace-nowrap">Ngày Vào Làm</th>
                 <th className="py-4 px-4 whitespace-nowrap text-center">Điều Chỉnh Phép</th>
                 <th className="py-4 px-4 whitespace-nowrap">Sinh Nhật 🔒</th>
@@ -92,9 +93,11 @@ function SkeletonEmployeesList({ viewMode }: { viewMode: 'grid' | 'table' }) {
           </div>
         </motion.div>
       ))}
+
     </div>
   );
 }
+
 
 const getInitialCarryover = (name: string): number => {
   const nameLower = name.toLowerCase();
@@ -108,7 +111,29 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [showAddForm, setShowAddForm] = useState<boolean>(false);
   const [isDeletingAll, setIsDeletingAll] = useState<boolean>(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+
+  const [departments, setDepartments] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('company_departments');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return ['Văn phòng', 'Kỹ thuật', 'Marketing', 'Kế toán', 'Nhân sự'];
+  });
+
+
+
+  const saveDepartments = (depts: string[]) => {
+    setDepartments(depts);
+    localStorage.setItem('company_departments', JSON.stringify(depts));
+  };
 
   // Form states
   const [empName, setEmpName] = useState<string>('');
@@ -119,6 +144,7 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
   const [empLeaveAllowance, setEmpLeaveAllowance] = useState<string>(''); // Optional custom annual leave allowance
   const [empLeaveCarryover, setEmpLeaveCarryover] = useState<string>(''); // Optional custom carryover leave
   const [empBirthday, setEmpBirthday] = useState<string>(''); // Private birthday
+  const [empDepartment, setEmpDepartment] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   // Private birthdays dictionary (keyed by employee name, value is DD/MM/YYYY or similar)
@@ -189,19 +215,49 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
   const [editLeaveAllowance, setEditLeaveAllowance] = useState<string>('');
   const [editLeaveCarryover, setEditLeaveCarryover] = useState<string>('');
   const [editBirthday, setEditBirthday] = useState<string>('');
+  const [editEmpDepartment, setEditEmpDepartment] = useState<string>('');
   const [isSavingEdit, setIsSavingEdit] = useState<boolean>(false);
 
   // Filtered list
   const filteredEmployees = employees.filter(e =>
     e.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    e.role.toLowerCase().includes(searchTerm.toLowerCase())
+    e.role.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (e.displayName && e.displayName.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    (e.department && e.department.toLowerCase().includes(searchTerm.toLowerCase()))
   );
+
+  const groupedEmployees = useMemo(() => {
+    const groups: { department: string; employees: Employee[] }[] = [];
+    const deptMap = new Map<string, Employee[]>();
+    
+    filteredEmployees.forEach(emp => {
+      const dept = (emp.department || '').trim() || 'Chưa Phân Bổ';
+      if (!deptMap.has(dept)) {
+        deptMap.set(dept, []);
+      }
+      deptMap.get(dept)!.push(emp);
+    });
+
+    deptMap.forEach((emps, dept) => {
+      groups.push({ department: dept, employees: emps });
+    });
+
+    groups.sort((a, b) => {
+      if (a.department === 'Chưa Phân Bổ') return 1;
+      if (b.department === 'Chưa Phân Bổ') return -1;
+      return a.department.localeCompare(b.department);
+    });
+
+    return groups;
+  }, [filteredEmployees]);
+
 
   const handleStartEdit = (emp: Employee) => {
     setEditingEmployee(emp);
     setEditName(emp.name);
     setEditExportName(getExportName(emp.name));
     setEditRole(emp.role);
+    
     setEditRegisteredAt(emp.registeredAt || '01/01/2026');
     setEditLeftAt(emp.leftAt || '');
     setEditLeaveAllowance(emp.leaveAllowance !== undefined ? String(emp.leaveAllowance) : '');
@@ -242,11 +298,17 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
         editLeftAt,
         editLeaveAllowance.trim() !== '' ? Number(editLeaveAllowance) : undefined,
         editLeaveCarryover.trim() !== '' ? Number(editLeaveCarryover) : undefined,
-        editExportName.trim() !== '' ? editExportName.trim() : undefined
+        editExportName.trim() !== '' ? editExportName.trim() : undefined,
+        undefined
       );
 
       // Save custom export name for PNG/PDF/Excel exports
       saveStoredExportName(editName.trim(), editExportName.trim());
+
+      // Save department if it's new
+      if (editEmpDepartment.trim() && !departments.includes(editEmpDepartment.trim())) {
+        saveDepartments([...departments, editEmpDepartment.trim()]);
+      }
 
       // Save private birthday
       if (editName.trim() !== editingEmployee.name) {
@@ -262,7 +324,7 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
         updatePrivateBirthday(editingEmployee.name, editBirthday);
       }
 
-      alert("Cập nhật thông tin nhân viên thành công!");
+      showToast("Cập nhật thông tin nhân viên thành công!");
       setEditingEmployee(null);
       onEmployeeAdded();
     } catch (err: any) {
@@ -293,7 +355,9 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
         registeredAt: empRegisteredAt,
         leftAt: empLeftAt || undefined,
         leaveAllowance: empLeaveAllowance.trim() !== '' ? Number(empLeaveAllowance) : undefined,
-        leaveCarryover: empLeaveCarryover.trim() !== '' ? Number(empLeaveCarryover) : undefined
+        leaveCarryover: empLeaveCarryover.trim() !== '' ? Number(empLeaveCarryover) : undefined,
+        displayName: empExportName.trim() || undefined,
+        department: empDepartment.trim() || undefined
       };
 
       await addEmployee(accessToken, newEmp);
@@ -302,13 +366,18 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
       if (empExportName.trim()) {
         saveStoredExportName(empName.trim(), empExportName.trim());
       }
+      
+      // Save department if it's new
+      if (empDepartment.trim() && !departments.includes(empDepartment.trim())) {
+        saveDepartments([...departments, empDepartment.trim()]);
+      }
 
       // Save private birthday if entered
       if (empBirthday) {
         updatePrivateBirthday(empName.trim(), empBirthday);
       }
 
-      alert("Đăng ký hồ sơ nhân viên thành công vào Google Sheet!");
+      showToast("Đăng ký hồ sơ nhân viên thành công!");
       onEmployeeAdded();
       setEmpName('');
       setEmpExportName('');
@@ -436,6 +505,8 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
             {isDeletingAll ? "Đang xóa..." : "Xóa tất cả"}
           </motion.button>
 
+
+
           <motion.button
             whileHover={{ scale: 1.025, y: -1 }}
             whileTap={{ scale: 0.97 }}
@@ -471,131 +542,141 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
               Nhập Hồ Sơ Nhân Viên Mới
             </h3>
 
-            <form onSubmit={handleSubmit} className="space-y-5">
-              <div>
-                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Họ Và Tên (Admin Quản Lý)</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Nguyễn Văn A"
-                  value={empName}
-                  onChange={(e) => setEmpName(e.target.value)}
-                  className="w-full px-4 py-2.5 text-sm bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider mb-2">Tên Xuất Báo Cáo / Tên Hiển Thị (Dùng cho PNG / PDF / Excel & Guest)</label>
-                <input
-                  type="text"
-                  placeholder="Ví dụ: Nhi, Thuận, Dũng, Hảo (Được dùng khi xuất file)"
-                  value={empExportName}
-                  onChange={(e) => setEmpExportName(e.target.value)}
-                  className="w-full px-4 py-2.5 text-sm bg-slate-50 dark:bg-slate-950/60 border border-indigo-200 dark:border-indigo-900/50 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors"
-                />
-                <p className="text-[10px] text-indigo-600 dark:text-indigo-400 mt-1 font-semibold">
-                  🔒 Admin thấy Họ & Tên đầy đủ. Khi xuất PNG/PDF/Excel hoặc cho khách xem, hệ thống CHỈ xuất tên này.
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Chức Vụ / Phòng ban</label>
-                <select
-                  value={empRole}
-                  onChange={(e) => setEmpRole(e.target.value)}
-                  className="w-full px-4 py-2.5 text-sm bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors"
-                >
-                  {[
-                    "Nhân viên", "Trưởng phòng", "Editor", "Designer", "Intern", 
-                    "3D Generalist", "Developer", "Project Manager", "HR Manager", 
-                    "Video Editor", "Animator", "Marketing Specialist", "Business Analyst"
-                  ].map(role => (
-                    <option key={role} value={role} className="bg-white text-slate-900 dark:bg-slate-900 dark:text-white">
-                      {role}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Ngày Vào Làm</label>
-                  <DatePicker
-                    required
-                    value={empRegisteredAt}
-                    onChange={(val) => setEmpRegisteredAt(val)}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Ngày Rời Khỏi (Không bắt buộc)</label>
-                  <DatePicker
-                    value={empLeftAt}
-                    onChange={(val) => setEmpLeftAt(val)}
-                    placeholder="Bỏ trống nếu đang làm"
-                  />
+            <form onSubmit={(e) => { playConfirmSound(); handleSubmit(e); }} className="space-y-6">
+              {/* THÔNG TIN CƠ BẢN */}
+              <div className="bg-slate-50/50 dark:bg-slate-900/30 p-4 rounded-2xl border border-slate-100 dark:border-slate-800">
+                <h4 className="text-xs font-black text-slate-700 dark:text-slate-300 uppercase tracking-widest mb-4 flex items-center gap-2">
+                  <User className="w-4 h-4 text-indigo-500" />
+                  Thông tin cơ bản
+                </h4>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Họ Và Tên (Admin Quản Lý)</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Nguyễn Văn A"
+                      value={empName}
+                      onChange={(e) => { setEmpName(e.target.value); setEmpExportName(getExportName(e.target.value)); }}
+                      className="w-full px-4 py-2.5 text-sm bg-white dark:bg-slate-950/60 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 text-slate-800 dark:text-slate-100 transition-colors shadow-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider mb-2">Tên Xuất Báo Cáo / Hiển Thị</label>
+                    <input
+                      type="text"
+                      placeholder="Ví dụ: Nhi, Thuận, Dũng, Hảo..."
+                      value={empExportName}
+                      onChange={(e) => setEmpExportName(e.target.value)}
+                      className="w-full px-4 py-2.5 text-sm bg-white dark:bg-slate-950/60 border border-indigo-200 dark:border-indigo-900/50 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 dark:text-slate-100 transition-colors shadow-sm"
+                    />
+                    <p className="text-[10px] text-indigo-600 dark:text-indigo-400 mt-1.5 font-semibold leading-relaxed">
+                      🔒 Chỉ dùng tên này cho Guest hoặc khi xuất PNG/PDF.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-pink-600 dark:text-pink-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                      <span>🎂</span> Sinh Nhật (Bảo Mật)
+                    </label>
+                    <DatePicker 
+                      value={empBirthday} 
+                      onChange={setEmpBirthday} 
+                      placeholder="Chọn ngày sinh nhật"
+                    />
+                  </div>
                 </div>
               </div>
 
-              {/* Simplified Leave Configuration Section */}
-              <div className="bg-slate-50 dark:bg-slate-950/40 p-4.5 rounded-2xl border border-slate-100 dark:border-slate-800/80 space-y-4">
-                <div className="flex items-center gap-2 pb-2 border-b border-slate-100 dark:border-slate-800/60">
-                  <span className="text-sm">⚙️</span>
-                  <h4 className="text-xs font-extrabold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">Cấu Hình Ngày Phép Nghỉ (Đơn Giản & Trực Quan)</h4>
-                </div>
-                
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 dark:text-slate-350 uppercase tracking-wider mb-2">Điều Chỉnh Số Ngày Phép (+ hoặc -)</label>
-                  <input
-                    type="number"
-                    placeholder="Gõ số dương để cộng thêm, số âm để trừ bớt (Ví dụ: +5 hoặc -2)"
-                    value={empLeaveCarryover}
-                    onChange={(e) => setEmpLeaveCarryover(e.target.value)}
-                    min="-100"
-                    max="100"
-                    className="w-full px-4 py-2.5 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 text-slate-800 dark:text-slate-100 transition-colors"
-                  />
-                  <p className="text-[11px] text-slate-500 dark:text-slate-450 mt-2 leading-relaxed">
-                    💡 <b>Cách quản lý cực đơn giản</b>: Để trống để hệ thống tự động tính quỹ phép chuẩn. Gõ <b className="text-emerald-600 font-bold">+5</b> để cộng thêm 5 ngày phép (thưởng thâm niên, phép cũ) hoặc gõ <b className="text-rose-600 font-bold">-2</b> để trừ bớt 2 ngày phép.
-                  </p>
-                </div>
-              </div>
-
-              {/* Private Birthday Section */}
-              <div className="bg-pink-50/10 dark:bg-pink-950/10 p-4.5 rounded-2xl border border-pink-100/20 dark:border-pink-900/20 space-y-2.5">
-                <div className="flex items-center gap-2 pb-1.5 border-b border-pink-100/10 dark:border-pink-900/10">
-                  <span className="text-sm">🎂</span>
-                  <h4 className="text-xs font-extrabold text-pink-600 dark:text-pink-400 uppercase tracking-wider">Thông Tin Sinh Nhật Riêng Tư (🔒)</h4>
+              {/* CÔNG VIỆC & CHỨC VỤ */}
+              <div className="bg-slate-50/50 dark:bg-slate-900/30 p-4 rounded-2xl border border-slate-100 dark:border-slate-800">
+                <h4 className="text-xs font-black text-slate-700 dark:text-slate-300 uppercase tracking-widest mb-4 flex items-center gap-2">
+                  <Briefcase className="w-4 h-4 text-emerald-500" />
+                  Công việc & Chức vụ
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Chức Vụ</label>
+                    <select
+                      value={empRole}
+                      onChange={(e) => setEmpRole(e.target.value)}
+                      className="w-full px-4 py-2.5 text-sm bg-white dark:bg-slate-950/60 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800 dark:text-slate-100 transition-colors shadow-sm"
+                    >
+                      {[
+                        "Nhân viên", "Trưởng phòng", "Editor", "Designer", "Intern", 
+                        "3D Generalist", "Developer", "Project Manager", "HR Manager", 
+                        "Video Editor", "Animator", "Marketing Specialist", "Business Analyst"
+                      ].map(role => (
+                        <option key={role} value={role} className="bg-white text-slate-900 dark:bg-slate-900 dark:text-white">
+                          {role}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Bộ Phận</label>
+                    <input
+                      type="text"
+                      list="dept-list"
+                      placeholder="Nhập hoặc chọn bộ phận..."
+                      value={empDepartment}
+                      onChange={(e) => setEmpDepartment(e.target.value)}
+                      className="w-full px-4 py-2.5 text-sm bg-white dark:bg-slate-950/60 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800 dark:text-slate-100 transition-colors shadow-sm"
+                    />
+                    <datalist id="dept-list">
+                      {departments.map(d => <option key={d} value={d} />)}
+                    </datalist>
+                  </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 dark:text-slate-350 uppercase tracking-wider mb-2">Ngày sinh nhật (Ví dụ: 15/09/1995 hoặc 15/09)</label>
-                  <input
-                    type="text"
-                    placeholder="Nhập ngày sinh nhật (Ví dụ: 15/09)"
-                    value={empBirthday}
-                    onChange={(e) => setEmpBirthday(e.target.value)}
-                    className="w-full px-4 py-2.5 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-400 text-slate-800 dark:text-slate-100 transition-colors"
+                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-emerald-500" /> Ngày Vào Làm
+                  </label>
+                  <DatePicker 
+                    value={empRegisteredAt} 
+                    onChange={setEmpRegisteredAt} 
+                    placeholder="Chọn ngày vào làm"
                   />
-                  <p className="text-[10px] text-pink-600/80 dark:text-pink-400/80 mt-2 leading-relaxed font-sans">
-                    🔒 <b>Lưu ý bảo mật</b>: Trường này được lưu trực tiếp tại trình duyệt của thiết bị này. Thông tin không đồng bộ lên Google Sheets, đảm bảo tuyệt đối chỉ có mình bạn nhìn thấy!
-                  </p>
+                </div>
+              </div>
+              
+              <div className="bg-slate-50/50 dark:bg-slate-900/30 p-4 rounded-2xl border border-slate-100 dark:border-slate-800">
+                <h4 className="text-xs font-black text-slate-700 dark:text-slate-300 uppercase tracking-widest mb-4 flex items-center gap-2">
+                  <Settings className="w-4 h-4 text-rose-500" />
+                  Cấu hình ngày phép nghỉ (Đơn giản & Trực quan)
+                </h4>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
+                      Điều chỉnh số ngày phép (+ hoặc -)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Gõ số dương để cộng thêm, số âm để trừ bớt (Ví dụ: +5 hoặc -2)"
+                      value={empLeaveCarryover}
+                      onChange={(e) => setEmpLeaveCarryover(e.target.value)}
+                      className="w-full px-4 py-2.5 text-sm bg-white dark:bg-slate-950/60 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 text-slate-800 dark:text-slate-100 transition-colors shadow-sm"
+                    />
+                    <p className="text-[10px] text-slate-500 mt-1.5 font-semibold leading-relaxed">
+                      💡 <strong>Cách quản lý cực đơn giản:</strong> Để trống để hệ thống tự động tính quỹ phép chuẩn. Gõ <span className="text-emerald-500">+5</span> để cộng thêm 5 ngày phép (thưởng thâm niên, phép cũ) hoặc gõ <span className="text-rose-500">-2</span> để trừ bớt 2 ngày phép.
+                    </p>
+                  </div>
                 </div>
               </div>
 
-              <div className="border-t border-slate-100 dark:border-slate-800/80 pt-5 flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowAddForm(false)}
-                  className="px-5 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-full text-sm font-bold transition-all cursor-pointer"
-                >
-                  Hủy bỏ
-                </button>
+              <div className="pt-2">
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 dark:bg-indigo-500 dark:hover:bg-indigo-400 text-white rounded-full text-sm font-bold shadow-md transition-all flex items-center gap-2 cursor-pointer"
+                  className="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-[0_8px_16px_-6px_rgba(79,70,229,0.4)] hover:shadow-[0_12px_20px_-6px_rgba(79,70,229,0.5)] transition-all active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed"
                 >
-                  {isSubmitting ? "Đang đồng bộ..." : "Hoàn Tất Đăng Ký"}
+                  {isSubmitting ? (
+                    <RandomLoader />
+                  ) : (
+                    <>
+                      <UserPlus className="w-4 h-4" />
+                      Lưu Hồ Sơ Nhân Viên
+                    </>
+                  )}
                 </button>
               </div>
             </form>
@@ -630,13 +711,14 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
             ) : viewMode === 'table' ? (
               <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-[28px] overflow-hidden shadow-sm transition-colors duration-300">
                 <div onTouchStart={(e) => e.stopPropagation()} onTouchMove={(e) => e.stopPropagation()} onTouchEnd={(e) => e.stopPropagation()} className="overflow-x-auto">
-                  <table className="no-swipe w-full min-w-[800px] md:min-w-0 text-left border-collapse">
+                  <table className="no-swipe w-full min-w-max text-left border-collapse whitespace-nowrap">
                     <thead>
                       <tr className="no-swipe bg-slate-50/80 dark:bg-slate-950/80 border-b border-slate-100 dark:border-slate-800/80 text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                         <th className="py-4 px-4 whitespace-nowrap text-center w-12">STT</th>
                         <th className="py-4 px-4 whitespace-nowrap">Họ & Tên Nhân Viên</th>
                         <th className="py-4 px-4 whitespace-nowrap">Chức Vụ</th>
-                        <th className="py-4 px-4 whitespace-nowrap">Ngày Vào Làm</th>
+                <th className="py-4 px-4 whitespace-nowrap">Bộ Phận</th>
+                <th className="py-4 px-4 whitespace-nowrap">Ngày Vào Làm</th>
                         <th className="py-4 px-4 whitespace-nowrap text-center">Điều Chỉnh Phép</th>
                         <th className="py-4 px-4 whitespace-nowrap">Sinh Nhật 🔒</th>
                         <th className="py-4 px-4 whitespace-nowrap text-right pr-6">Thao Tác</th>
@@ -651,14 +733,8 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
                             key={emp.name}
                             initial={{ opacity: 0, y: 15 }}
                             animate={{ opacity: 1, y: 0 }}
-                            whileHover={{
-                              backgroundColor: "rgba(99, 102, 241, 0.08)",
-                              scale: 1.002,
-                              y: -1,
-                              boxShadow: "0 4px 16px -4px rgba(99, 102, 241, 0.15)"
-                            }}
                             transition={{ duration: 0.3, delay: idx * 0.03 }}
-                            className="group transition-all cursor-default"
+                            className="group transition-colors duration-200 cursor-default hover:bg-slate-50 dark:hover:bg-slate-800/40"
                           >
                             <td className="py-3.5 px-4 text-center font-mono font-bold text-slate-400 dark:text-slate-500">
                               {idx + 1}
@@ -684,6 +760,9 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
                                 <Briefcase className="w-3 h-3" />
                                 {emp.role}
                               </span>
+                            </td>
+                            <td className="py-3.5 px-4 text-slate-600 dark:text-slate-400 text-sm font-medium">
+                              {emp.department || "Chưa phân bổ"}
                             </td>
                             <td className="py-3.5 px-4 font-mono text-slate-600 dark:text-slate-400">
                               {emp.registeredAt || "N/A"}
@@ -760,8 +839,18 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
                 </div>
               </div>
             ) : (
-              <motion.div layout className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
-                {filteredEmployees.map((emp, idx) => {
+              <div className="space-y-12">
+                {groupedEmployees.map((group, groupIdx) => (
+                  <div key={group.department} className="space-y-6">
+                    <h3 className="text-base sm:text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+                      <div className="w-2.5 h-6 bg-indigo-500 rounded-full shadow-[0_0_10px_rgba(99,102,241,0.5)]" />
+                      {group.department}
+                      <span className="text-[11px] px-2.5 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 font-bold ml-2 border border-indigo-100/50 dark:border-indigo-900/30 shadow-sm">
+                        {group.employees.length} nhân sự
+                      </span>
+                    </h3>
+                    <motion.div layout className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-5 sm:gap-6">
+                      {group.employees.map((emp, idx) => {
                   const mainIndex = employees.findIndex(e => e.name === emp.name);
                   return (
                     <motion.div
@@ -770,7 +859,7 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
                       initial={{ opacity: 0, scale: 0.96, y: 15 }}
                       animate={{ opacity: 1, scale: 1, y: 0 }}
                       exit={{ opacity: 0, scale: 0.95 }}
-                      whileHover={{ y: -6, scale: 1.018, boxShadow: "0 20px 30px -10px rgba(99, 102, 241, 0.15)" }}
+                      whileHover={{ scale: 1.02, y: -4, boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)" }}
                       transition={{ duration: 0.3, delay: idx * 0.05, ease: "easeOut" }}
                       className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-[24px] sm:rounded-[28px] p-4 sm:p-5 shadow-sm transition-colors duration-200 flex flex-col items-center relative overflow-hidden group cursor-default"
                     >
@@ -860,10 +949,16 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
                       <span className="text-[10px] bg-indigo-50/80 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 font-bold px-2 py-0.5 rounded-md border border-indigo-100/40 dark:border-indigo-900/30 mb-2">
                         Xuất file: {getExportName(emp.name)}
                       </span>
-                      <p className="text-xs text-indigo-600 dark:text-indigo-400 font-bold mb-4 flex items-center gap-1.5 bg-indigo-50/50 dark:bg-indigo-950/30 px-2.5 py-1 rounded-full border border-indigo-100/20 dark:border-indigo-900/20">
-                        <Briefcase className="w-3.5 h-3.5" />
-                        {emp.role}
-                      </p>
+                      <div className="flex flex-wrap items-center justify-center gap-2 mb-4">
+                        <p className="text-[11px] text-indigo-600 dark:text-indigo-400 font-bold flex items-center gap-1.5 bg-indigo-50/80 dark:bg-indigo-950/50 px-2.5 py-1 rounded-full border border-indigo-100/40 dark:border-indigo-900/30 shadow-xs">
+                          <Briefcase className="w-3.5 h-3.5" />
+                          {emp.role}
+                        </p>
+                        <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1.5 bg-emerald-50/80 dark:bg-emerald-950/50 px-2.5 py-1 rounded-full border border-emerald-100/40 dark:border-emerald-900/30 shadow-xs">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.5)]"></span>
+                          {emp.department || 'Chưa phân bổ'}
+                        </p>
+                      </div>
 
                       {/* Metadata Row */}
                       <div className="w-full border-t border-slate-50 dark:border-slate-800/60 pt-3 mt-auto flex flex-col gap-1 text-[11px] text-slate-450 dark:text-slate-500 font-mono">
@@ -1038,7 +1133,10 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
                     </motion.div>
                   );
                 })}
-              </motion.div>
+                    </motion.div>
+                  </div>
+                ))}
+              </div>
             )}
           </motion.div>
         )}
@@ -1105,7 +1203,7 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
                       </div>
 
                       <div>
-                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Chức Vụ / Phòng ban</label>
+                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Chức Vụ</label>
                         <select
                           value={editRole}
                           onChange={(e) => setEditRole(e.target.value)}
@@ -1122,6 +1220,21 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
                           ))}
                         </select>
                       </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Bộ Phận</label>
+                        <input
+                          type="text"
+                          list="edit-dept-list"
+                          placeholder="Nhập hoặc chọn bộ phận..."
+                          value={editEmpDepartment}
+                          onChange={(e) => setEditEmpDepartment(e.target.value)}
+                          className="w-full px-4 py-2.5 text-sm bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors"
+                        />
+                        <datalist id="edit-dept-list">
+                          {departments.map(d => <option key={d} value={d} />)}
+                        </datalist>
+                      </div>
+                      
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
@@ -1233,6 +1346,24 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
           </motion.div>
         )}
       </AnimatePresence>
+
+      <AnimatePresence>
+        {toastMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.9 }}
+            transition={{ type: "spring", stiffness: 300, damping: 20 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999]"
+          >
+            <div className="bg-emerald-500 text-white px-5 py-3 rounded-full shadow-lg shadow-emerald-500/20 font-bold text-sm flex items-center gap-2">
+              <Check className="w-4 h-4" />
+              <span>{toastMessage}</span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
+

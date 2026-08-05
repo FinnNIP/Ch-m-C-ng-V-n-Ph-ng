@@ -1,7 +1,8 @@
 export interface Employee {
   name: string; // Họ Và Tên (Unique identifier now)
   displayName?: string; // Tên hiển thị khi xuất file PNG/PDF/Excel & Guest mode
-  role: string; // Chức Vụ
+  role: string;
+  department?: string; // Bộ phận
   registeredAt: string; // Ngày Đăng Ký
   leftAt?: string; // Ngày Rời Khỏi / Nghỉ Việc
   rowIndex?: number; // Vị trí dòng trên Google Sheet để chỉnh sửa/xóa
@@ -31,6 +32,7 @@ export interface DailyStatus {
 export interface EmployeeMonthlyReport {
   employeeName: string;
   role: string;
+  department?: string;
   totalDays: number;
   presentDays: number; // Số ngày có đi làm
   absentDays: number; // Số ngày không đi làm

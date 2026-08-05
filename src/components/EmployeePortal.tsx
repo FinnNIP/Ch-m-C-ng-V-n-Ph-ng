@@ -399,7 +399,6 @@ export default function EmployeePortal({
           </span>
           <h1 id="portal-title" className="text-2xl md:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white font-sans flex flex-wrap items-center gap-x-2.5 gap-y-1">
             <span>📊 Tra Cứu Công & Phép</span>
-            <span className="bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 bg-clip-text text-transparent font-black">Phòng Visual</span>
           </h1>
           <p className="text-xs md:text-sm text-slate-500 dark:text-slate-400 mt-2 max-w-2xl leading-relaxed">
             Xem nhanh bảng công, số ngày nghỉ phép, số giờ tăng ca (OT) hằng tháng bảo mật của từng nhân sự.
@@ -575,7 +574,7 @@ export default function EmployeePortal({
 
             <div className="border-t border-slate-100 dark:border-slate-800/80 pt-4 text-left">
               <span className="block text-[10px] font-bold text-slate-440 dark:text-slate-500 mb-2 uppercase tracking-wide">
-                👥 Danh sách nhân viên phòng Visual:
+                👥 Danh sách nhân viên:
               </span>
               <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
                 {employees.map((emp, idx) => (

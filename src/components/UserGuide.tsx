@@ -65,7 +65,7 @@ export default function UserGuide({
               <BookOpen className="w-3.5 h-3.5" /> Hướng Dẫn Sử Dụng
             </span>
             <h2 className="text-2xl sm:text-3xl font-extrabold font-sans tracking-tight">
-              Trung Tâm Hỗ Trợ Phòng Visual
+              Trung Tâm Hỗ Trợ Nhân Sự
             </h2>
             <p className="text-xs sm:text-sm text-indigo-100/90 leading-relaxed max-w-xl">
               Cổng thông tin chia sẻ nhanh liên kết truy cập ứng dụng cho Nhân viên & Kế toán. Theo dõi chấm công, ngày phép gối đầu và thống kê OT tức thì.
@@ -209,7 +209,7 @@ export default function UserGuide({
                 </div>
                 
                 <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-                  Dành riêng cho Quản trị viên phòng Visual. Cho phép chấm công hàng ngày, quản lý danh sách nhân sự, và cấu hình các cài đặt hệ thống. <strong>Yêu cầu xác thực email thuộc danh sách được duyệt.</strong>
+                  Dành riêng cho Quản trị viên hệ thống. Cho phép chấm công hàng ngày, quản lý danh sách nhân sự, và cấu hình các cài đặt hệ thống. <strong>Yêu cầu xác thực email thuộc danh sách được duyệt.</strong>
                 </p>
 
                 <div className="flex items-center gap-2">
@@ -339,7 +339,7 @@ export default function UserGuide({
         <div className="space-y-1">
           <span className="font-bold">Lưu ý về tính đồng bộ dữ liệu:</span>
           <p>
-            Tất cả dữ liệu chỉnh sửa trên ứng dụng Chấm Công Văn Phòng sẽ được đồng bộ trực tiếp lên tập tin Google Sheets thuộc quyền sở hữu của quản trị viên phòng Visual. Nếu dữ liệu có độ trễ do kết nối, nhấn nút <span className="font-semibold text-indigo-600 dark:text-indigo-400">Tải lại dữ liệu (Refresh)</span> ở đầu thanh công cụ để buộc hệ thống làm mới từ máy chủ.
+            Tất cả dữ liệu chỉnh sửa trên ứng dụng Chấm Công Văn Phòng sẽ được đồng bộ trực tiếp lên tập tin Google Sheets thuộc quyền sở hữu của quản trị viên hệ thống. Nếu dữ liệu có độ trễ do kết nối, nhấn nút <span className="font-semibold text-indigo-600 dark:text-indigo-400">Tải lại dữ liệu (Refresh)</span> ở đầu thanh công cụ để buộc hệ thống làm mới từ máy chủ.
           </p>
         </div>
       </div>
