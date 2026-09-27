@@ -139,8 +139,8 @@ export async function checkAndSetupSheets(accessToken: string): Promise<void> {
     if (!hasEmployeesSheet) {
       await writeSheetHeaders(
         accessToken,
-        "DanhSachNhanVien!A1:H1",
-        ["Họ Và Tên", "Chức Vụ", "Ngày Đăng Ký", "Ngày Rời Khỏi", "Quỹ Phép Năm", "Phép Tồn Năm Trước", "Tên Hiển Thị (Guest)", "Bộ Phận"]
+        "DanhSachNhanVien!A1:I1",
+        ["Họ Và Tên", "Chức Vụ", "Ngày Đăng Ký", "Ngày Rời Khỏi", "Quỹ Phép Năm", "Phép Tồn Năm Trước", "Tên Hiển Thị (Guest)", "Bộ Phận", "Ngày Sinh"]
       );
     }
 
@@ -315,10 +315,11 @@ export async function getEmployees(accessToken: string): Promise<Employee[]> {
       role: row[1] || "",
       registeredAt: row[2] || "",
       leftAt: row[3] || "",
-      leaveAllowance: row[4] ? Number(row[4]) : undefined,
-      leaveCarryover: row[5] ? Number(row[5]) : undefined,
+        leaveAllowance: row[4] && String(row[4]).trim() !== "" ? Number(row[4]) : undefined,
+        leaveCarryover: row[5] && String(row[5]).trim() !== "" ? Number(row[5]) : undefined,
       displayName: row[6] || undefined,
       department: row[7] || undefined,
+      dateOfBirth: row[8] || undefined,
       rowIndex: idx + 2
     })).filter((emp: Employee) => emp.name !== "");
 
@@ -342,7 +343,7 @@ export async function addEmployee(accessToken: string, employee: Employee): Prom
     return;
   }
   const spreadsheetId = getSpreadsheetId();
-  const range = "DanhSachNhanVien!A:H";
+  const range = "DanhSachNhanVien!A:I";
   const values = [
     [
       employee.name,
@@ -352,7 +353,8 @@ export async function addEmployee(accessToken: string, employee: Employee): Prom
       employee.leaveAllowance !== undefined ? employee.leaveAllowance : "",
       employee.leaveCarryover !== undefined ? employee.leaveCarryover : "",
       employee.displayName || "",
-      employee.department || ""
+      employee.department || "",
+      employee.dateOfBirth || ""
     ]
   ];
 
@@ -429,7 +431,7 @@ export async function saveEmployeesOrder(accessToken: string, employees: Employe
     return;
   }
   const spreadsheetId = getSpreadsheetId();
-  const range = `DanhSachNhanVien!A2:H${employees.length + 1}`;
+  const range = `DanhSachNhanVien!A2:I${employees.length + 1}`;
   
   const values = employees.map(emp => [
     emp.name,
@@ -439,13 +441,14 @@ export async function saveEmployeesOrder(accessToken: string, employees: Employe
     emp.leaveAllowance !== undefined ? emp.leaveAllowance : "",
     emp.leaveCarryover !== undefined ? emp.leaveCarryover : "",
     emp.displayName || "",
-    emp.department || ""
+    emp.department || "",
+    emp.dateOfBirth || ""
   ]);
 
   // First, clear the existing range to make sure any extra old rows are wiped if size decreased
   try {
     await googleFetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/DanhSachNhanVien!A2:H1000:clear`,
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/DanhSachNhanVien!A2:I1000:clear`,
       accessToken,
       { method: 'POST' }
     );
@@ -483,7 +486,8 @@ export async function updateEmployee(
   newLeaveAllowance?: number,
   newLeaveCarryover?: number,
   newDisplayName?: string,
-  newDepartment?: string
+  newDepartment?: string,
+  newDateOfBirth?: string
 ): Promise<void> {
   if (!accessToken || accessToken === 'local') {
     const data = await getLocalState();
@@ -498,7 +502,8 @@ export async function updateEmployee(
         leaveAllowance: newLeaveAllowance,
         leaveCarryover: newLeaveCarryover,
         department: newDepartment || undefined,
-        displayName: newDisplayName || undefined
+        displayName: newDisplayName || undefined,
+        dateOfBirth: newDateOfBirth || undefined
       };
       
       // Cascade name change in logs
@@ -520,8 +525,8 @@ export async function updateEmployee(
     throw new Error("Không tìm thấy dòng tương ứng để cập nhật.");
   }
 
-  // 1. Update the employee row (A to H)
-  const range = `DanhSachNhanVien!A${rowIndex}:H${rowIndex}`;
+  // 1. Update the employee row (A to I)
+  const range = `DanhSachNhanVien!A${rowIndex}:I${rowIndex}`;
   const values = [[
     newName, 
     newRole, 
@@ -530,7 +535,8 @@ export async function updateEmployee(
     newLeaveAllowance !== undefined ? newLeaveAllowance : "",
     newLeaveCarryover !== undefined ? newLeaveCarryover : "",
     newDisplayName || "",
-    newDepartment || ""
+    newDepartment || "",
+    newDateOfBirth || ""
   ]];
 
   await googleFetch(
@@ -614,7 +620,7 @@ export async function getTimeLogs(accessToken: string): Promise<TimeLog[]> {
       return {
         employeeName: row[0] || "",
         date: logDate,
-        status: (row[2] || "Có đi làm") as 'Có đi làm' | 'Không đi làm' | 'Nghỉ phép',
+        status: (row[2] || "Có đi làm") as 'Có đi làm' | 'Không đi làm' | 'Nghỉ phép' | 'Nghỉ lễ',
         otFrom: row[3] || "",
         otTo: row[4] || "",
         note: row[5] || "",
@@ -728,7 +734,7 @@ export async function saveDayAttendance(
   date: string,
   updates: Array<{
     employeeName: string;
-    status: 'Có đi làm' | 'Không đi làm' | 'Nghỉ phép';
+    status: 'Có đi làm' | 'Không đi làm' | 'Nghỉ phép' | 'Nghỉ lễ';
     otFrom: string;
     otTo: string;
     note: string;
@@ -820,7 +826,57 @@ export async function saveDayAttendance(
     }
   }
 
-  // 1. Handle Deletions (Bulk batchUpdate)
+  // 1. Handle Updates (Batch values update)
+  if (logsToUpdate.length > 0) {
+    const data = logsToUpdate.map(item => ({
+      range: `NhatKyChamCong!A${item.rowIndex}:F${item.rowIndex}`,
+      values: [[
+        item.log.employeeName,
+        item.log.date,
+        item.log.status,
+        item.log.otFrom,
+        item.log.otTo,
+        item.log.note
+      ]]
+    }));
+
+    await googleFetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`,
+      accessToken,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          valueInputOption: "USER_ENTERED",
+          data
+        })
+      }
+    );
+  }
+
+  // 2. Handle Appends (Append values)
+  if (logsToCreate.length > 0) {
+    const values = logsToCreate.map(log => [
+      log.employeeName,
+      log.date,
+      log.status,
+      log.otFrom,
+      log.otTo,
+      log.note
+    ]);
+
+    await googleFetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/NhatKyChamCong!A:F:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+      accessToken,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          values
+        })
+      }
+    );
+  }
+
+  // 3. Handle Deletions (Bulk batchUpdate)
   if (logsToDelete.length > 0) {
     // Fetch spreadsheet metadata to get sheetId
     const metadata = await googleFetch(
@@ -853,56 +909,6 @@ export async function saveDayAttendance(
       {
         method: 'POST',
         body: JSON.stringify({ requests })
-      }
-    );
-  }
-
-  // 2. Handle Updates (Batch values update)
-  if (logsToUpdate.length > 0) {
-    const data = logsToUpdate.map(item => ({
-      range: `NhatKyChamCong!A${item.rowIndex}:F${item.rowIndex}`,
-      values: [[
-        item.log.employeeName,
-        item.log.date,
-        item.log.status,
-        item.log.otFrom,
-        item.log.otTo,
-        item.log.note
-      ]]
-    }));
-
-    await googleFetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`,
-      accessToken,
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          valueInputOption: "USER_ENTERED",
-          data
-        })
-      }
-    );
-  }
-
-  // 3. Handle Appends (Append values)
-  if (logsToCreate.length > 0) {
-    const values = logsToCreate.map(log => [
-      log.employeeName,
-      log.date,
-      log.status,
-      log.otFrom,
-      log.otTo,
-      log.note
-    ]);
-
-    await googleFetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/NhatKyChamCong!A:F:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
-      accessToken,
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          values
-        })
       }
     );
   }
@@ -1170,10 +1176,12 @@ export async function parseGridSheet(
         const cellValue = String(row[colIdx]).trim();
         if (!cellValue) continue;
 
-        let status: 'Có đi làm' | 'Không đi làm' | 'Nghỉ phép' = 'Có đi làm';
+        let status: 'Có đi làm' | 'Không đi làm' | 'Nghỉ phép' | 'Nghỉ lễ' = 'Có đi làm';
         const lowerCell = cellValue.toLowerCase();
 
-        if (lowerCell.includes('phép') || lowerCell.includes('phep') || lowerCell === 'p' || lowerCell.includes('nghỉ phép') || lowerCell.includes('nghi phep')) {
+        if (lowerCell.includes('lễ') || lowerCell.includes('le') || lowerCell === 'l' || lowerCell.includes('nghỉ lễ')) {
+          status = 'Nghỉ lễ';
+        } else if (lowerCell.includes('phép') || lowerCell.includes('phep') || lowerCell === 'p' || lowerCell.includes('nghỉ phép') || lowerCell.includes('nghi phep')) {
           status = 'Nghỉ phép';
         } else if (lowerCell === 'không' || lowerCell === 'khong' || lowerCell === 'no' || lowerCell === 'k' || lowerCell === 'o' || lowerCell.includes('không')) {
           status = 'Không đi làm';
@@ -1338,5 +1346,179 @@ export async function deleteAllData(accessToken: string): Promise<void> {
   } catch (err) {
     console.error("Lỗi khi xóa dữ liệu:", err);
     throw err;
+  }
+}
+
+export async function bulkUpdateEmployees(
+  accessToken: string,
+  updates: {
+    rowIndex: number;
+    oldName: string;
+    newName: string;
+    newRole: string;
+    newRegisteredAt: string;
+    newLeftAt: string;
+    newLeaveAllowance?: number;
+    newLeaveCarryover?: number;
+    newDisplayName?: string;
+    newDepartment?: string;
+    newDateOfBirth?: string;
+  }[]
+): Promise<void> {
+  if (!accessToken || accessToken === 'local') {
+    const data = await getLocalState();
+    const nameMap = new Map<string, string>(); // oldName -> newName
+    for (const update of updates) {
+      const empIndex = data.employees.findIndex((e: any) => e.rowIndex === update.rowIndex);
+      if (empIndex !== -1) {
+        data.employees[empIndex] = {
+          ...data.employees[empIndex],
+          name: update.newName,
+          role: update.newRole,
+          registeredAt: update.newRegisteredAt,
+          leftAt: update.newLeftAt || undefined,
+          leaveAllowance: update.newLeaveAllowance,
+          leaveCarryover: update.newLeaveCarryover,
+          department: update.newDepartment || undefined,
+          displayName: update.newDisplayName || undefined,
+          dateOfBirth: update.newDateOfBirth || undefined
+        };
+        if (update.oldName.trim().toLowerCase() !== update.newName.trim().toLowerCase()) {
+          nameMap.set(update.oldName.trim().toLowerCase(), update.newName);
+        }
+      }
+    }
+    
+    if (nameMap.size > 0) {
+      data.timeLogs = data.timeLogs.map((log: any) => {
+        const oldLower = log.employeeName.trim().toLowerCase();
+        if (nameMap.has(oldLower)) {
+          return { ...log, employeeName: nameMap.get(oldLower) };
+        }
+        return log;
+      });
+    }
+    await saveLocalState(data.employees, data.timeLogs);
+    return;
+  }
+
+  const spreadsheetId = getSpreadsheetId();
+  const dataToUpdate: any[] = [];
+  const nameMap = new Map<string, string>();
+
+  for (const update of updates) {
+    if (!update.rowIndex) continue;
+    const range = `DanhSachNhanVien!A${update.rowIndex}:I${update.rowIndex}`;
+    const values = [[
+      update.newName, 
+      update.newRole, 
+      update.newRegisteredAt, 
+      update.newLeftAt, 
+      update.newLeaveAllowance !== undefined ? update.newLeaveAllowance : "",
+      update.newLeaveCarryover !== undefined ? update.newLeaveCarryover : "",
+      update.newDisplayName || "",
+      update.newDepartment || "",
+      update.newDateOfBirth || ""
+    ]];
+    dataToUpdate.push({ range, values });
+
+    if (update.oldName.trim().toLowerCase() !== update.newName.trim().toLowerCase()) {
+      nameMap.set(update.oldName.trim().toLowerCase(), update.newName);
+    }
+  }
+
+  if (dataToUpdate.length > 0) {
+    await googleFetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`,
+      accessToken,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          valueInputOption: "USER_ENTERED",
+          data: dataToUpdate
+        })
+      }
+    );
+  }
+
+  if (nameMap.size > 0) {
+    try {
+      const logs = await getTimeLogs(accessToken);
+      const logDataToUpdate: any[] = [];
+      for (const log of logs) {
+        if (!log.rowIndex) continue;
+        const oldLower = log.employeeName.trim().toLowerCase();
+        if (nameMap.has(oldLower)) {
+          logDataToUpdate.push({
+            range: `NhatKyChamCong!A${log.rowIndex}`,
+            values: [[nameMap.get(oldLower)]]
+          });
+        }
+      }
+      if (logDataToUpdate.length > 0) {
+        await googleFetch(
+          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`,
+          accessToken,
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              valueInputOption: "USER_ENTERED",
+              data: logDataToUpdate
+            })
+          }
+        );
+      }
+    } catch (err) {
+      console.error("Failed to cascade name changes in logs:", err);
+    }
+  }
+}
+
+export async function bulkDeleteEmployees(accessToken: string, rowIndexes: number[]): Promise<void> {
+  if (!accessToken || accessToken === 'local') {
+    const data = await getLocalState();
+    const rowsSet = new Set(rowIndexes);
+    data.employees = data.employees.filter((e: any) => !rowsSet.has(e.rowIndex));
+    // Since names might change or logs are not strictly row-index bound to employees, 
+    // we don't automatically delete logs by employee index in local, unless we cross-reference name.
+    // Assuming standard deleteEmployee logic doesn't delete logs, we leave them or you can clean up.
+    await saveLocalState(data.employees, data.timeLogs);
+    return;
+  }
+
+  const spreadsheetId = getSpreadsheetId();
+  const metadata = await googleFetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}`,
+    accessToken
+  );
+  const sheets = metadata.sheets || [];
+  const empSheet = sheets.find((s: any) => s.properties.title === "DanhSachNhanVien");
+  if (!empSheet) {
+    throw new Error("Không tìm thấy sheet 'DanhSachNhanVien'.");
+  }
+  const sheetId = empSheet.properties.sheetId;
+
+  // IMPORTANT: Sort row indexes in descending order so deletion of earlier rows doesn't shift later row indexes!
+  const sortedIndexes = [...rowIndexes].sort((a, b) => b - a);
+  const requests = sortedIndexes.map(rowIndex => ({
+    deleteDimension: {
+      range: {
+        sheetId: sheetId,
+        dimension: "ROWS",
+        startIndex: rowIndex - 1, // 0-based, inclusive
+        endIndex: rowIndex // 0-based, exclusive
+      }
+    }
+  }));
+
+  if (requests.length > 0) {
+    await googleFetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`,
+      accessToken,
+      {
+        method: 'POST',
+        body: JSON.stringify({ requests })
+      }
+    );
   }
 }

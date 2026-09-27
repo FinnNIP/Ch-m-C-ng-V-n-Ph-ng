@@ -734,7 +734,7 @@ html, body, #root {
 }
 
 .neon-glass-card:hover {
-    transform: scale(1.012);
+    transform: translateY(-4px) scale(1.012);
     box-shadow: 0 20px 35px -10px rgba(0, 0, 0, 0.65), 
                 0 15px 20px -10px rgba(0, 0, 0, 0.55),
                 0 0 15px 1px rgba(99, 102, 241, 0.15);

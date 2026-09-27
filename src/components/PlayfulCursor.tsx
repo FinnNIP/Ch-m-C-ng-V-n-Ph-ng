@@ -15,12 +15,10 @@ export default function PlayfulCursor() {
   }>>([]);
 
   const colors = [
-    'rgba(0, 242, 254, 0.8)',  // Cyan
-    'rgba(79, 172, 254, 0.8)',  // Light Blue
-    'rgba(244, 63, 94, 0.8)',   // Rose
-    'rgba(236, 72, 153, 0.8)',  // Pink
-    'rgba(168, 85, 247, 0.8)',  // Purple
-    'rgba(16, 185, 129, 0.8)'   // Emerald
+    'rgba(255, 215, 0, 0.65)',   // Soft Gold
+    'rgba(254, 240, 138, 0.65)', // Pale Amber Starlight
+    'rgba(199, 210, 254, 0.6)',  // Soft Lavender Starlight
+    'rgba(165, 243, 252, 0.6)'   // Delicate Cyan
   ];
 
   useEffect(() => {
@@ -48,18 +46,18 @@ export default function PlayfulCursor() {
         followerRef.current.y = clientY;
       }
 
-      // Spawn a tiny, playful spark particle when the mouse moves
-      if (Math.random() < 0.6) {
+      // Spawn a delicate, poetic starlight mote occasionally when the mouse moves
+      if (Math.random() < 0.12) {
         const angle = Math.random() * Math.PI * 2;
-        const speed = 0.5 + Math.random() * 1.5;
+        const speed = 0.3 + Math.random() * 0.8;
         particlesRef.current.push({
           x: clientX,
           y: clientY,
           vx: Math.cos(angle) * speed,
-          vy: Math.sin(angle) * speed - 0.2, // slight upward drift
+          vy: Math.sin(angle) * speed - 0.15, // gentle soft upward drift
           color: colors[Math.floor(Math.random() * colors.length)],
-          size: 2 + Math.random() * 2.5,
-          alpha: 1.0
+          size: 1.5 + Math.random() * 2.0,
+          alpha: 0.85
         });
       }
     };

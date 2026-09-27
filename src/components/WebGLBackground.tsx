@@ -15,10 +15,19 @@ import {
   Waves,
   Zap,
   Sun,
-  Moon
+  Moon,
+  Orbit,
+  MousePointer,
+  Compass,
+  Radio,
+  Sparkle
 } from 'lucide-react';
+import { WebGLPointCloud } from './WebGLPointCloud';
 
 const VERTEX_SHADER_SOURCE = `
+  #ifdef GL_ES
+  precision mediump float;
+  #endif
   attribute vec2 a_position;
   void main() {
     gl_Position = vec4(a_position, 0.0, 1.0);
@@ -41,6 +50,12 @@ const FRAGMENT_SHADER_SOURCE = `
   uniform vec3 u_aurora_col2;
   uniform vec3 u_aurora_col3;
   uniform vec2 u_mouse;
+  uniform float u_moon_phase;
+  uniform vec2 u_impact_pos;
+  uniform float u_shockwave_radius;
+  uniform float u_shockwave_intensity;
+  uniform vec3 u_impact_color;
+  uniform vec3 u_river_color;
 
   float hash(vec2 p) {
       return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
@@ -68,10 +83,10 @@ const FRAGMENT_SHADER_SOURCE = `
   }
 
   vec3 getAurora(vec2 uv, float t) {
-      if (uv.y < -1.5) return vec3(0.0);
+      if (uv.y < -1.8) return vec3(0.0);
       
-      // Vertical fade - peaks in upper sky, decays near bottom/top
-      float fade = smoothstep(-1.2, 1.2, uv.y) * smoothstep(4.8, 2.5, uv.y);
+      // Vertical fade - lowered gracefully to wave across mid-sky right behind mountain crests
+      float fade = smoothstep(-1.5, 0.15, uv.y) * smoothstep(4.0, 1.6, uv.y);
       if (fade <= 0.0) return vec3(0.0);
 
       vec3 auroraColor = vec3(0.0);
@@ -100,7 +115,7 @@ const FRAGMENT_SHADER_SOURCE = `
               col = u_aurora_col2;
           } else {
               col = u_aurora_col3;
-              strength *= smoothstep(-0.5, 3.0, uv.y); // High altitude fade extension
+              strength *= smoothstep(-0.5, 2.5, uv.y); // High altitude fade extension
           }
           
           auroraColor += col * strength * fade * 0.45;
@@ -121,109 +136,367 @@ const FRAGMENT_SHADER_SOURCE = `
       float distToMouseRaw = length(st - mouse_st);
       
       st *= 5.0;
+      vec2 unwarped_st = st; // Pristine, rock-steady celestial coordinates for background stars, moon & sky
 
-      // Cursor ambient soft neon illumination (extremely tiny and soft neon bead of light)
-      float cursorGlow = 0.012 / (distToMouseRaw * distToMouseRaw * 150.0 + 0.06);
-      float cursorBleed = 0.003 / (distToMouseRaw * 8.0 + 0.04);
-      vec3 cursorColor = mix(u_neon_color, u_neon_color2, 0.5 + 0.5 * sin(u_time * 1.5)) * (cursorGlow + cursorBleed * 0.2) * u_neon_intensity;
+      // --- LOCALIZED TERRAIN SHOCKWAVE DISTORTION ---
+      // Energetic impact distortion applied ONLY to local terrain & river, NEVER to sky or celestial stars!
+      vec3 shockwaveColorFlash = vec3(0.0);
+      vec2 terrain_st = st;
+      if (u_shockwave_intensity > 0.002) {
+          vec2 toImpact = st - u_impact_pos;
+          float distImp = length(toImpact);
+          float ringDist = abs(distImp - u_shockwave_radius);
+          float ringThickness = 0.40;
+          
+          if (ringDist < ringThickness && distImp < 2.8) {
+              float wave = sin((1.0 - ringDist / ringThickness) * 3.14159);
+              vec2 warpDir = normalize(toImpact + vec2(0.0001));
+              terrain_st += warpDir * wave * 0.06 * u_shockwave_intensity;
+              shockwaveColorFlash = mix(u_impact_color, vec3(0.95, 0.98, 1.0), 0.35) * wave * u_shockwave_intensity * 0.30;
+          }
+      }
 
-      float horizonBlend = pow(clamp(1.0 - st.y / 5.0, 0.0, 1.0), 2.5);
+      // Cursor ambient soft neon illumination (whisper-soft and gentle)
+      float cursorGlow = 0.006 / (distToMouseRaw * distToMouseRaw * 180.0 + 0.08);
+      float cursorBleed = 0.0015 / (distToMouseRaw * 10.0 + 0.06);
+      vec3 cursorColor = mix(u_neon_color, u_neon_color2, 0.5 + 0.5 * sin(u_time * 1.5)) * (cursorGlow + cursorBleed * 0.2) * (u_neon_intensity * 0.5);
+
+      float horizonBlend = pow(clamp(1.0 - unwarped_st.y / 5.0, 0.0, 1.0), 2.5);
       
-      // Dynamic sky based on Dark/Light mode
-      vec3 skyZenith  = mix(vec3(0.93, 0.94, 0.96), vec3(0.002, 0.003, 0.005), u_is_dark);
-      vec3 skyHorizon = mix(vec3(0.96, 0.97, 0.98), vec3(0.005, 0.006, 0.012), u_is_dark);
+      // Dynamic sky based on Dark/Light mode - deep, poetic, serene night
+      vec3 skyZenith  = mix(vec3(0.93, 0.94, 0.96), vec3(0.003, 0.005, 0.010), u_is_dark);
+      vec3 skyHorizon = mix(vec3(0.96, 0.97, 0.98), vec3(0.006, 0.010, 0.018), u_is_dark);
       
-      // Blend a touch of the secondary neon color into the horizon for a soft environmental glow
-      skyHorizon = mix(skyHorizon, u_neon_color2 * 0.18, u_is_dark);
+      // Blend a delicate touch of secondary neon color into the horizon for a soft environmental glow
+      skyHorizon = mix(skyHorizon, u_neon_color2 * 0.06, u_is_dark);
       vec3 skyBase = mix(skyZenith, skyHorizon, horizonBlend);
 
-      vec2 stM = st;
+      // Natural serene mountains & flowing river
+      vec2 stM = terrain_st;
       stM.y += 2.5;
 
-      // Mountain Ridge A (Deep background mountain)
-      float ridgeA = fbm(vec2(stM.x * 0.2 + 0.3 + t * 0.03, 1.5)) * 12.9 - 2.18;
+      // --- CELESTIAL 3D PERSPECTIVE SHOOTING STARS FALLING BEHIND MOUNTAINS ---
+      // Rendered with unwarped_st so shooting stars and trails never jitter or shake on impact!
+      vec3 meteorSkyLight = vec3(0.0);
+      float meteorReflectA = 0.0;
+      float meteorReflectB = 0.0;
+      vec3 meteorReflectColor = vec3(0.0);
+
+      for (float mi = 0.0; mi < 3.0; mi++) {
+          float mCycle = 5.8 + mi * 3.1;
+          float mTime = mod(t * 1.05 + mi * 3.9, mCycle);
+          
+          if (mTime < 2.2) {
+              float mProg = mTime / 2.2;
+              vec2 mSeed = vec2(floor((t * 1.05 + mi * 3.9) / mCycle), mi * 37.1);
+              
+              float startX = (hash(mSeed) * 2.0 - 1.0) * 13.0;
+              float startY = 3.8 + hash(mSeed + vec2(19.2)) * 1.4;
+              float startZ = -4.5;
+              
+              float curZ = startZ + mTime * 1.95;
+              float curX = startX + mTime * 5.6;
+              float curY = startY - mTime * 2.7 - mTime * mTime * 0.82;
+              
+              float depthFactor = 1.0 / (1.0 - curZ * 0.28);
+              vec2 screenPos = vec2(curX, curY) * depthFactor;
+              
+              vec2 vel3D = vec2(5.6, -2.7 - mTime * 1.6);
+              vec2 screenVel = normalize(vel3D);
+              
+              vec2 vHead = unwarped_st - screenPos;
+              float proj = dot(vHead, -screenVel);
+              float trailLength = (2.4 + mProg * 1.8) * depthFactor;
+              
+              if (proj >= 0.0 && proj <= trailLength) {
+                  float distPerp = length(vHead + screenVel * proj);
+                  float trailProgress = (1.0 - proj / trailLength);
+                  float ribbonWidth = 0.038 * depthFactor * (0.35 + 0.65 * trailProgress);
+                  float trailIntensity = exp(-distPerp / ribbonWidth) * pow(trailProgress, 1.4);
+                  
+                  float depthBrightness = 0.50 + 0.60 * smoothstep(-4.5, -0.5, curZ);
+                  vec3 trailCol = mix(vec3(1.0, 0.96, 0.90), mix(u_neon_color, u_neon_color2, 0.4), proj / trailLength);
+                  meteorSkyLight += trailCol * trailIntensity * depthBrightness * 0.75;
+              }
+              
+              // Meteor glowing nucleus head
+              float dHead = length(vHead);
+              float headCore = exp(-dHead / (0.045 * depthFactor)) * 0.70;
+              float headAura = exp(-dHead / (0.18 * depthFactor)) * 0.20;
+              meteorSkyLight += vec3(1.0, 0.98, 0.94) * (headCore + headAura) * depthFactor;
+              
+              // Trailing effect behind moving meteors (soft persistent path)
+              for (float k = 0.0; k < 15.0; k++) {
+                  float pastTime = mTime - k * 0.026;
+                  if (pastTime < 0.0) break;
+                  
+                  float pZ = startZ + pastTime * 1.95;
+                  float pX = startX + pastTime * 5.6;
+                  float pY = startY - pastTime * 2.7 - pastTime * pastTime * 0.82;
+                  float pDepth = 1.0 / (1.0 - pZ * 0.28);
+                  vec2 pScreen = vec2(pX, pY) * pDepth;
+                  
+                  float dPast = length(unwarped_st - pScreen);
+                  float frameAlpha = pow(0.78, k);
+                  float rPast = (0.025 + 0.014 * (1.0 - k / 15.0)) * pDepth;
+                  float pastIntensity = exp(-dPast / rPast) * frameAlpha;
+                  
+                  vec3 pastCol = mix(u_neon_color, vec3(1.0, 0.98, 0.92), 1.0 - k / 15.0);
+                  meteorSkyLight += pastCol * pastIntensity * pDepth * 0.28;
+              }
+
+              // Mountain crest reflections in screen space:
+              float ridgeAY = fbm(vec2(screenPos.x * 0.20 + 0.3 + t * 0.022, 1.5)) * 12.9 - 2.18 - 2.5;
+              float distToRidgeA = abs(screenPos.y - ridgeAY);
+              float horizDistA = abs(stM.x - screenPos.x);
+              
+              if (distToRidgeA < 2.5 && horizDistA < 4.0) {
+                  float reflA = exp(-distToRidgeA * 1.2) * exp(-horizDistA * 0.85);
+                  meteorReflectA += reflA;
+                  meteorReflectColor += mix(vec3(1.0, 0.96, 0.84), u_neon_color, 0.55) * reflA;
+              }
+              
+              float ridgeBY = fbm(vec2(screenPos.x * 0.31 + 5.7 + t * 0.045, 3.2)) * 5.4 - 0.9 - 2.5;
+              float distToRidgeB = abs(screenPos.y - ridgeBY);
+              float horizDistB = abs(stM.x - screenPos.x);
+              if (distToRidgeB < 2.2 && horizDistB < 3.5) {
+                  float reflB = exp(-distToRidgeB * 1.3) * exp(-horizDistB * 0.95);
+                  meteorReflectB += reflB;
+              }
+          }
+      }
+
+      // Mountain Ridge A (Deep background mountain - slow celestial drift)
+      float ridgeA = fbm(vec2(stM.x * 0.20 + 0.3 + t * 0.022, 1.5)) * 12.9 - 2.18;
       float aboveA  = stM.y - ridgeA;
-      float inA     = step(aboveA, 0.0);
-      float alphaA  = smoothstep(0.0, ridgeA, stM.y) * inA * step(0.0, stM.y);
-      vec3  mountainBaseA = mix(vec3(0.88, 0.90, 0.93), vec3(0.018, 0.022, 0.045), u_is_dark);
-      vec3  rimA    = u_neon_color * u_neon_intensity * 0.7 * smoothstep(0.12, 0.0, abs(aboveA));
-      vec3  colA    = mountainBaseA + rimA;
+      float alphaA  = smoothstep(0.04, -0.04, aboveA);
+      
+      // Ridge A: Sleek dark nocturnal silhouette with vivid glowing Primary Neon crest stroke
+      vec3 mountainBaseA = mix(
+          vec3(0.88, 0.92, 0.98), 
+          vec3(0.008, 0.012, 0.022), 
+          u_is_dark
+      );
 
-      // Mountain Ridge B (Midground mountain)
-      float ridgeB = fbm(vec2(stM.x * 0.31 + 5.7 + t * 0.06, 3.2)) * 5.4 - 0.9;
+      float strokeA_razor = exp(-abs(aboveA) * 36.0) * 1.30;
+      float strokeA_glow  = exp(-abs(aboveA) * 9.0) * 0.45;
+      float crestGradientA = strokeA_razor + strokeA_glow;
+      vec3 meteorReflectionA = meteorReflectColor * strokeA_glow * 0.40;
+
+      // Pure glowing colored neon stroke on Ridge A (Primary Color)
+      vec3 rimA = (u_neon_color * crestGradientA * 1.10 * u_neon_intensity + meteorReflectionA) * smoothstep(0.08, -0.02, aboveA);
+      vec3 colA = mountainBaseA + rimA;
+
+      // Mountain Ridge B (Foreground mountain - natural gentle drift)
+      float ridgeB = fbm(vec2(stM.x * 0.31 + 5.7 + t * 0.045, 3.2)) * 5.4 - 0.9;
       float aboveB  = stM.y - ridgeB;
-      float inB     = step(aboveB, 0.0);
-      float alphaB  = smoothstep(0.0, ridgeB, stM.y) * inB * step(0.0, stM.y);
-      vec3  mountainBaseB = mix(vec3(0.84, 0.86, 0.89), vec3(0.012, 0.016, 0.035), u_is_dark);
-      vec3  rimB    = u_neon_color2 * u_neon_intensity * 0.7 * smoothstep(0.12, 0.0, abs(aboveB));
-      vec3  colB    = mountainBaseB + rimB;
+      float alphaB  = smoothstep(0.04, -0.04, aboveB);
+      
+      // Ridge B: Sleek dark nocturnal silhouette with vivid glowing Secondary Neon crest stroke
+      vec3 mountainBaseB = mix(
+          vec3(0.82, 0.88, 0.96),
+          vec3(0.006, 0.010, 0.018), 
+          u_is_dark
+      );
 
-      // Mountain Ridge C (Foreground mountain)
-      float ridgeC = fbm(vec2(stM.x * 0.47 + 11.3 + t * 0.12, 7.8)) * 2.9 - 0.55;
-      float aboveC  = stM.y - ridgeC;
-      float inC     = step(aboveC, 0.0);
-      float alphaC  = smoothstep(0.0, ridgeC, stM.y) * inC * step(0.0, stM.y);
-      vec3  mountainBaseC = mix(vec3(0.80, 0.82, 0.85), vec3(0.008, 0.012, 0.025), u_is_dark);
-      vec3  rimC    = mix(u_neon_color, u_neon_color2, 0.5) * u_neon_intensity * 0.85 * smoothstep(0.12, 0.0, abs(aboveC));
-      vec3  colC    = mountainBaseC + rimC;
+      float strokeB_razor = exp(-abs(aboveB) * 36.0) * 1.30;
+      float strokeB_glow  = exp(-abs(aboveB) * 9.0) * 0.45;
+      float crestGradientB = strokeB_razor + strokeB_glow;
+      vec3 meteorReflectionB = meteorReflectColor * strokeB_glow * 0.35;
 
-      // Stars (Only at night/dark)
-      vec2 skySt = st;
-      float minStarDist = 100.0;
-      for (float i = 0.0; i < 40.0; i++) {
+      // Pure glowing colored neon stroke on Ridge B (Secondary Color)
+      vec3 rimB = (u_neon_color2 * crestGradientB * 1.10 * u_neon_intensity + meteorReflectionB) * smoothstep(0.08, -0.02, aboveB);
+      vec3 colB = mountainBaseB + rimB;
+
+      // Subtle, poetic cursor sweep bloom on mountain crest
+      float topRidgeScreenY = max(ridgeA, ridgeB) - 2.5;
+      float distCursorToCrest = abs(mouse_st.y - topRidgeScreenY);
+      float horizDistCursor = abs(stM.x - mouse_st.x);
+      float cursorSweepBloom = exp(-horizDistCursor * 1.8) * exp(-distCursorToCrest * 2.5) * (0.85 + 0.35 * sin(u_time * 5.0));
+      colA += u_neon_color * cursorSweepBloom * 0.45 * strokeA_glow;
+      colB += u_neon_color2 * cursorSweepBloom * 0.45 * strokeB_glow;
+
+      // Background Celestial Stars: Gentle Sine Pulsing & Twinkling with Soft Central Glow (Rock-steady, NO jitter!)
+      vec2 skySt = unwarped_st;
+      vec3 starColorSum = vec3(0.0);
+      for (float i = 0.0; i < 28.0; i++) {
           vec2 seed = vec2(i * 127.1, i * 311.7);
           vec2 starPos = vec2(
-               hash(seed) * 60.0 - 30.0,
-               hash(seed + vec2(17.3)) * 6.0 - 1.0
+               hash(seed) * 50.0 - 25.0,
+               hash(seed + vec2(17.3)) * 4.6 + 0.35
           );
-          float d = length(skySt - starPos);
-          minStarDist = min(minStarDist, d);
+          vec2 dVec = skySt - starPos;
+          float d = length(dVec);
+          if (d > 2.2) continue;
+
+          float starFreq = 0.50 + hash(seed + vec2(4.1)) * 0.60;
+          float starPhase = hash(seed) * 6.28318;
+          float sineWave = sin(t * starFreq + starPhase) * 0.5 + 0.5;
+          float twinkle = smoothstep(0.08, 0.92, sineWave);
+
+          // Gentle center core (không chói gắt, ngọc trai êm dịu)
+          float centerCore = exp(-d * 22.0) * (0.05 + 0.10 * twinkle);
+          float softCenterGlow = exp(-d * 7.5) * (0.03 + 0.06 * twinkle);
+          float diffuseAura = exp(-d * 2.8) * (0.012 + 0.025 * twinkle);
+
+          vec3 pastelRainbow = 0.85 + 0.15 * cos(6.28318 * (d * 1.5 - t * 0.035 + vec3(0.0, 0.33, 0.67)));
+          float rainbowHalo = exp(-pow((d - 0.22) / 0.16, 2.0)) * 0.025 * twinkle;
+
+          vec3 starHue = mix(vec3(1.0, 0.94, 0.82), vec3(0.95, 0.97, 1.0), twinkle);
+          vec3 starLight = starHue * (centerCore + softCenterGlow + diffuseAura) + pastelRainbow * rainbowHalo;
+
+          starColorSum += starLight * (0.20 + 0.80 * twinkle);
       }
-      float stars = 0.004 / (minStarDist + 0.015);
 
-      // Waves (Interactive glowing water streams)
-      st += vec2(0.0, 5.0);
-      float l = 0.0;
-      for (float i = 0.0; i < 20.0; i++) {
-          float wave = sin(st.x * 0.35 + t * 1.3 + i * 0.95) * sin(t * i * 0.085 + noise(st));
-          float dist = abs(st.y + wave - i * 0.125);
-          float glow = 0.016 / (dist + 0.075);
-          l += glow;
-      }
-
-      vec3 waterBase = mix(vec3(0.93, 0.95, 0.97), vec3(0.006, 0.012, 0.025), u_is_dark);
-      vec3 waterLines = mix(u_neon_color, u_neon_color2, 0.5) * u_neon_intensity * 0.8;
-      vec3 waterCol = waterBase + waterLines * l * 0.42;
-
-      float waterMask = smoothstep(0.0, 0.35, l);
-
-      vec3 col = skyBase;
-
-      float mountainMask = max(max(inA, inB), inC);
+      float mountainMask = max(alphaA, alphaB);
       float starMask = u_is_dark * (1.0 - mountainMask);
       
-      // Starry sky
-      col += vec3(0.9, 0.95, 1.0) * stars * 5.0 * starMask;
+      // Dynamic sky composition
+      vec3 col = skyBase;
+      col += starColorSum * 0.55 * starMask;
 
-      // Aurora Borealis layer
-      vec3 auroraCol = getAurora(st - vec2(0.0, 5.0), t) * u_is_dark * u_aurora_intensity * (1.0 - mountainMask);
+      // Aurora Borealis layer - gracefully lowered to sweep across the sky above and behind the mountain crests (soft ethereal silk)
+      vec3 auroraCol = getAurora(unwarped_st - vec2(0.0, 0.25), t) * u_is_dark * (u_aurora_intensity * 0.85) * (1.0 - mountainMask);
       col += auroraCol;
 
-      // Moon halo ambient glow (Night only)
-      float moonDist = length(st - vec2(0.0, 6.5));
-      float moonHalo = 0.065 / (moonDist + 0.22);
-      col += mix(u_neon_color2, vec3(1.0), 0.4) * moonHalo * u_is_dark * 0.55;
+      // --- CELESTIAL REAL-WORLD MOON WITH AUTO-UPDATING LUNAR PHASE ---
+      float moonArcAngle = 0.88 + sin(t * 0.005) * 0.26;
+      float moonArcRadius = 4.6;
+      vec2 moonOrbitCenter = vec2(0.2, -0.9);
+      vec2 moonPos = moonOrbitCenter + vec2(cos(moonArcAngle), sin(moonArcAngle)) * moonArcRadius;
 
-      col = mix(col, waterCol, waterMask);
+      vec2 moonUV = unwarped_st - moonPos;
+      float moonRadius = 0.42;
+      float dMoon = length(moonUV);
+      vec2 mNorm = moonUV / moonRadius;
+      float rDist = length(mNorm);
 
+      vec3 moonSurfaceColor = vec3(0.0);
+      float moonIllum = 0.0;
+
+      if (rDist <= 1.0) {
+          float zNorm = sqrt(max(0.0, 1.0 - rDist * rDist));
+          vec3 N = vec3(mNorm.x, mNorm.y, zNorm);
+
+          float sunAngle = u_moon_phase * 6.2831853;
+          vec3 L = vec3(-sin(sunAngle), 0.0, -cos(sunAngle));
+
+          float NdotL = dot(N, L);
+          float sunlit = smoothstep(-0.04, 0.04, NdotL);
+          
+          float crater = noise(mNorm * 6.5) * 0.16 + noise(mNorm * 16.0) * 0.08;
+          
+          vec3 sunlitColor = mix(vec3(0.98, 0.96, 0.92), vec3(0.96, 0.91, 0.78), crater * 1.5);
+          vec3 earthshineColor = vec3(0.03, 0.05, 0.10) * (1.0 - crater * 0.5);
+          float diskEdge = smoothstep(1.0, 0.94, rDist);
+          
+          moonSurfaceColor = mix(earthshineColor, sunlitColor, sunlit) * diskEdge;
+          moonIllum = sunlit;
+      }
+
+      // Dynamic Real-time Lunar Corona & Aureole (gentle, poetic starlight, never blinding)
+      float phaseIllum = 0.5 * (1.0 - cos(u_moon_phase * 6.2831853));
+      float moonCorona = (0.020 + 0.025 * phaseIllum) / (dMoon * dMoon * 4.5 + 0.18);
+      float moonAureole = exp(-dMoon * 1.8) * (0.08 + 0.10 * phaseIllum);
+      float moonHaze = exp(-dMoon * 0.75) * (0.04 + 0.06 * phaseIllum);
+
+      vec3 moonGlowTint = mix(vec3(0.98, 0.92, 0.78), vec3(0.65, 0.82, 0.98), smoothstep(0.3, 2.5, dMoon));
+      vec3 moonTotalLight = moonSurfaceColor * 0.95 + 
+                            moonGlowTint * (moonCorona * 0.40 + moonAureole * 0.35 + moonHaze * 0.20);
+
+      col += moonTotalLight * u_is_dark * (1.0 - mountainMask);
+      col += meteorSkyLight * u_is_dark * (1.0 - mountainMask);
+
+      // --- ETHEREAL TOPOGRAPHIC CONTOUR RIVER (Contour & Topographic isolines) ---
+      // River flows gracefully below Mountain Ridge B in the foreground
+      float riverBankY = ridgeB * 0.42 - 0.35;
+      float riverWaterMask = smoothstep(0.12, -0.12, stM.y - riverBankY);
+      
+      float waterDepth = clamp((-stM.y + 1.2) * 0.38, 0.10, 2.2);
+      float waterPerspective = 1.0 / (waterDepth + 0.20);
+      
+      // Gentle, soothing flow rate for topographic contours
+      float waveTime = t * 0.45;
+      
+      // Topographic heightfield coordinates with smooth perspective
+      vec2 topoUV = vec2(stM.x * 1.35 * waterPerspective * 0.35 + waveTime * 0.10, stM.y * 3.2 - waveTime * 0.14);
+      
+      // Organic domain-warped elevation field (smooth, continuous, non-aliasing topographic contours)
+      float elev1 = fbm(topoUV);
+      float elev2 = fbm(topoUV * 1.6 + vec2(elev1 * 0.75, waveTime * 0.08));
+      float elevation = elev1 * 0.62 + elev2 * 0.38;
+      
+      // 14 glowing topographic contour elevation isolines across the river surface:
+      float levels = 13.0;
+      float scaledElev = elevation * levels;
+      float dContour = abs(fract(scaledElev) - 0.5); // distance to nearest isoline [0..0.5]
+      
+      // Slender razor-crisp starlight filament core:
+      float lineCore = smoothstep(0.065, 0.0, dContour);
+      
+      // Soft radiant neon aura around each contour line (gentle, harmonious, non-blinding):
+      float lineGlow = exp(-dContour * 12.0) * 0.38;
+      float lineHalo = exp(-dContour * 5.0) * 0.12;
+      float topoLineIntensity = lineCore * 0.60 + lineGlow + lineHalo;
+      
+      // Alternating elevation tier nuance (graceful color nuances across contour levels):
+      float tier = 0.5 + 0.5 * sin(floor(scaledElev) * 1.57);
+      vec3 contourTierColor = mix(u_river_color, u_neon_color2, tier * 0.22);
+      
+      // Luminous fiber-optic core (diamond-starlight highlight on the line core):
+      vec3 topoLineColor = mix(contourTierColor, vec3(0.92, 0.96, 1.0), lineCore * 0.35) * topoLineIntensity;
+      topoLineColor *= (0.50 + 0.35 * u_neon_intensity);
+      
+      // Deep nocturnal crystalline abyss base (sleek, dark, elegant - NOT thick, muddy, or heavy):
+      vec3 riverBaseColor = mix(
+          vec3(0.92, 0.96, 0.99), 
+          vec3(0.005, 0.010, 0.022) + u_river_color * 0.03 * u_neon_intensity, 
+          u_is_dark
+      );
+      
+      vec2 waterReflCoord = vec2(stM.x, -stM.y * 0.75 + 0.35);
+      
+      // Reflected Aurora Borealis dancing gently in the river (soft ethereal wash)
+      vec3 reflAurora = getAurora(waterReflCoord - vec2(0.0, 0.25), t) * 0.32 * u_aurora_intensity * u_is_dark;
+      
+      // Reflected Mountain Neon Rim glow shimmering on water surface
+      float reflRimLight = exp(-abs(waterReflCoord.y - 1.0) * 1.5) * 0.25;
+      vec3 reflMountainGlow = mix(u_neon_color, u_neon_color2, 0.5 + 0.5 * sin(stM.x * 0.5)) * reflRimLight * 0.40 * u_neon_intensity;
+      
+      // Specular Celestial Moon Path reflection shimmering downstream (lấp lánh vảy bạc êm dịu, không chói)
+      float moonDistX = abs(stM.x - moonPos.x);
+      float moonColumn = exp(-pow(moonDistX / 1.45, 2.0));
+      float moonShimmer = moonColumn * pow(max(0.0, sin(stM.y * 18.0 * waterPerspective * 0.25 + waveTime * 1.8)), 4.0);
+      vec3 moonReflectionWater = vec3(0.96, 0.94, 0.88) * (moonShimmer * 0.32 + moonColumn * 0.05) * (0.30 + 0.5 * phaseIllum);
+      
+      // Soft misty shoreline glow where river kisses the mountain base
+      float shoreDist = abs(stM.y - riverBankY);
+      float shoreMist = exp(-shoreDist * 5.0) * 0.35;
+      vec3 shoreGlow = mix(u_river_color, vec3(0.70, 0.88, 1.0), 0.30) * shoreMist * (u_neon_intensity * 0.55);
+      
+      // Final Ethereal Topographic River Composition - light, airy, elegant, glowing contour isolines
+      vec3 waterCol = riverBaseColor + 
+                      topoLineColor + 
+                      reflAurora + 
+                      reflMountainGlow + 
+                      moonReflectionWater + 
+                      shoreGlow;
+
+      // Composite Mountains (Rendered on top of 3D meteors!)
       col = mix(col, colA, alphaA);
       col = mix(col, colB, alphaB);
-      col = mix(col, colC, alphaC);
 
-      col = mix(col, waterCol, waterMask);
+      // Composite River Water in foreground
+      col = mix(col, waterCol, clamp(riverWaterMask * 0.92, 0.0, 1.0));
 
-      // Add the glowing interactive cursor color on top
+      // Add shockwave chromatic ring flash from impact (soft, subtle pulse, never blinding)
+      col += shockwaveColorFlash;
+
+      // Add glowing interactive cursor color on top
       col += cursorColor * (0.85 + 0.15 * sin(u_time * 4.0));
+
+      // Photographic exposure tone mapping preserving vividness, clarity, and preventing harsh blowout:
+      col = 1.0 - exp(-col * 1.15);
 
       gl_FragColor = vec4(col, 1.0);
   }
@@ -234,14 +507,15 @@ interface Preset {
   name: string;
   primary: string;
   secondary: string;
+  river?: string;
 }
 
 const PRESETS: Preset[] = [
-  { id: 'cyan_ice', name: 'Băng Dương Neon', primary: '#00f2fe', secondary: '#4facfe' },
-  { id: 'cyber_purple', name: 'Tử Đinh Hương', primary: '#ff007f', secondary: '#9b5de5' },
-  { id: 'aurora', name: 'Cực Quang Lục', primary: '#00f5d4', secondary: '#10b981' },
-  { id: 'sunset', name: 'Hoàng Hôn Visual', primary: '#ff4500', secondary: '#f9d976' },
-  { id: 'synth_retro', name: 'Hồng Kông Retro', primary: '#ff2e93', secondary: '#0575e6' },
+  { id: 'cyan_ice', name: 'Băng Dương Neon', primary: '#00f2fe', secondary: '#4facfe', river: '#00f2fe' },
+  { id: 'cyber_purple', name: 'Tử Đinh Hương', primary: '#ff007f', secondary: '#9b5de5', river: '#9b5de5' },
+  { id: 'aurora', name: 'Cực Quang Lục', primary: '#00f5d4', secondary: '#10b981', river: '#00f5d4' },
+  { id: 'sunset', name: 'Hoàng Hôn Visual', primary: '#ff4500', secondary: '#f9d976', river: '#ff5500' },
+  { id: 'synth_retro', name: 'Hồng Kông Retro', primary: '#ff2e93', secondary: '#0575e6', river: '#00c6ff' },
 ];
 
 interface AuroraPalette {
@@ -267,6 +541,42 @@ const hexToRgb = (hex: string): [number, number, number] => {
   const b = parseInt(cleanHex.slice(4, 6), 16) / 255;
   return [r, g, b];
 };
+
+export function getRealWorldMoonPhase(date: Date = new Date()): {
+  phase: number;
+  name: string;
+  illuminated: number;
+  ageDays: number;
+} {
+  const KNOWN_NEW_MOON = 1704974220000; // Jan 11, 2024, 11:57 UTC
+  const SYNODIC_MONTH = 29.53058867 * 86400 * 1000;
+  const time = date.getTime();
+  const diff = (time - KNOWN_NEW_MOON) % SYNODIC_MONTH;
+  const phase = ((diff % SYNODIC_MONTH) + SYNODIC_MONTH) % SYNODIC_MONTH / SYNODIC_MONTH;
+  const ageDays = phase * 29.53058867;
+  const illuminated = Math.round(0.5 * (1.0 - Math.cos(phase * 2 * Math.PI)) * 100);
+
+  let name = 'Trăng non (Sóc)';
+  if (phase >= 0.02 && phase < 0.23) {
+    name = 'Trăng lưỡi liềm đầu tháng (Waxing Crescent)';
+  } else if (phase >= 0.23 && phase < 0.27) {
+    name = 'Trăng bán nguyệt đầu tháng (Thượng huyền / First Quarter)';
+  } else if (phase >= 0.27 && phase < 0.47) {
+    name = 'Trăng khuyết đầu tháng (Waxing Gibbous)';
+  } else if (phase >= 0.47 && phase < 0.53) {
+    name = 'Trăng tròn (Vọng / Full Moon)';
+  } else if (phase >= 0.53 && phase < 0.73) {
+    name = 'Trăng khuyết cuối tháng (Waning Gibbous)';
+  } else if (phase >= 0.73 && phase < 0.77) {
+    name = 'Trăng bán nguyệt cuối tháng (Hạ huyền / Last Quarter)';
+  } else if (phase >= 0.77 && phase < 0.98) {
+    name = 'Trăng lưỡi liềm cuối tháng (Waning Crescent)';
+  } else {
+    name = 'Trăng non / Trăng mới (New Moon)';
+  }
+
+  return { phase, name, illuminated, ageDays };
+}
 
 const hexToHue = (hex: string): number => {
   const cleanHex = hex.startsWith('#') ? hex.slice(1) : hex;
@@ -325,6 +635,15 @@ export const WebGLBackground: React.FC = () => {
   const mouseRef = useRef({ x: 0.5, y: 0.5 });
   const targetMouseRef = useRef({ x: 0.5, y: 0.5 });
 
+  // Energetic meteor collision shockwave distortion state
+  const shockwaveRef = useRef({
+    x: 0,
+    y: 0,
+    radius: 0,
+    intensity: 0,
+    color: [0, 0.95, 1.0] as [number, number, number]
+  });
+
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       targetMouseRef.current = {
@@ -340,12 +659,50 @@ export const WebGLBackground: React.FC = () => {
   const [preset, setPreset] = useState<string>(() => localStorage.getItem('bg_preset') || 'cyan_ice');
   const [primaryColor, setPrimaryColor] = useState<string>(() => localStorage.getItem('bg_primary') || '#00f2fe');
   const [secondaryColor, setSecondaryColor] = useState<string>(() => localStorage.getItem('bg_secondary') || '#4facfe');
+
+  useEffect(() => {
+    const handleImpact = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail) {
+        const { clientX, clientY, color } = customEvent.detail;
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        const aspect = width / height;
+        const stX = ((clientX / width) * 2.0 - 1.0) * aspect * 5.0;
+        const stY = ((1.0 - clientY / height) * 2.0 - 1.0) * 5.0;
+        const rgb = hexToRgb(color || primaryColor);
+
+        shockwaveRef.current = {
+          x: stX,
+          y: stY,
+          radius: 0.1,
+          intensity: 1.0,
+          color: rgb
+        };
+      }
+    };
+    window.addEventListener('meteor-mountain-impact', handleImpact);
+    return () => window.removeEventListener('meteor-mountain-impact', handleImpact);
+  }, [primaryColor]);
   const [opacity, setOpacity] = useState<number>(() => Number(localStorage.getItem('bg_opacity') || '1.00'));
-  const [intensity, setIntensity] = useState<number>(() => Number(localStorage.getItem('bg_intensity') || '1.6'));
+  const [intensity, setIntensity] = useState<number>(() => {
+    const saved = localStorage.getItem('bg_intensity');
+    if (!saved) return 1.20;
+    const n = Number(saved);
+    return isNaN(n) ? 1.20 : Math.max(0.2, Math.min(n, 2.5));
+  });
   const [speed, setSpeed] = useState<number>(() => Number(localStorage.getItem('bg_speed') || '0.9'));
   const [glassmorphic, setGlassmorphic] = useState<boolean>(() => localStorage.getItem('bg_glassmorphic') !== 'false');
-  const [auroraIntensity, setAuroraIntensity] = useState<number>(() => Number(localStorage.getItem('bg_aurora_intensity') || '1.3'));
+  const [auroraIntensity, setAuroraIntensity] = useState<number>(() => {
+    const saved = localStorage.getItem('bg_aurora_intensity');
+    if (!saved) return 1.15;
+    const n = Number(saved);
+    return isNaN(n) ? 1.15 : Math.max(0.1, Math.min(n, 3.0));
+  });
   
+  // Custom River / Fractal Noise Color
+  const [riverColor, setRiverColor] = useState<string>(() => localStorage.getItem('bg_river_color') || '#00f2fe');
+
   // Aurora custom colors
   const [auroraPreset, setAuroraPreset] = useState<string>(() => localStorage.getItem('bg_aurora_preset') || 'classic_green');
   const [auroraCol1, setAuroraCol1] = useState<string>(() => localStorage.getItem('bg_aurora_col1') || '#0aff84');
@@ -354,8 +711,42 @@ export const WebGLBackground: React.FC = () => {
 
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
   const [isOpen, setIsOpen] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<'preset' | 'custom' | 'aurora'>('preset');
+  const [activeTab, setActiveTab] = useState<'preset' | 'custom' | 'aurora' | 'pointcloud'>('preset');
   const [activeAuroraColorIdx, setActiveAuroraColorIdx] = useState<1 | 2 | 3>(1);
+
+  // WebGL Falling Stardust & Van Gogh Starry Sky custom state
+  const [pcEnabled, setPcEnabled] = useState<boolean>(() => localStorage.getItem('pc_enabled') !== 'false');
+  const [pcCount, setPcCount] = useState<number>(() => Number(localStorage.getItem('pc_count') ?? '280'));
+  const [pcSparkleSize, setPcSparkleSize] = useState<number>(() => Number(localStorage.getItem('pc_size') ?? '1.55'));
+  const [pcColorMode, setPcColorMode] = useState<number>(() => Number(localStorage.getItem('pc_color_mode') ?? '0'));
+  const [pcSpeed, setPcSpeed] = useState<number>(() => Number(localStorage.getItem('pc_speed') ?? '0.30'));
+  const [pcParallax, setPcParallax] = useState<number>(() => Number(localStorage.getItem('pc_parallax') ?? '0.15'));
+  const [pcShootingStars, setPcShootingStars] = useState<boolean>(() => localStorage.getItem('pc_shooting_stars') !== 'false');
+  const [pcCometTail, setPcCometTail] = useState<boolean>(() => localStorage.getItem('pc_comet_tail') !== 'false');
+
+  const updatePointCloud = (updates: Partial<{
+    enabled: boolean;
+    particleCount: number;
+    sparkleSize: number;
+    colorMode: number;
+    speed: number;
+    parallaxStrength: number;
+    shootingStarsEnabled: boolean;
+    cometTailEnabled: boolean;
+  }>) => {
+    if (updates.enabled !== undefined) setPcEnabled(updates.enabled);
+    if (updates.particleCount !== undefined) setPcCount(updates.particleCount);
+    if (updates.sparkleSize !== undefined) setPcSparkleSize(updates.sparkleSize);
+    if (updates.colorMode !== undefined) setPcColorMode(updates.colorMode);
+    if (updates.speed !== undefined) setPcSpeed(updates.speed);
+    if (updates.parallaxStrength !== undefined) setPcParallax(updates.parallaxStrength);
+    if (updates.shootingStarsEnabled !== undefined) setPcShootingStars(updates.shootingStarsEnabled);
+    if (updates.cometTailEnabled !== undefined) setPcCometTail(updates.cometTailEnabled);
+
+    window.dispatchEvent(new CustomEvent('update-pointcloud-settings', {
+      detail: updates
+    }));
+  };
 
   // Sync isDarkMode dynamically by observing document element classList
   useEffect(() => {
@@ -413,6 +804,7 @@ export const WebGLBackground: React.FC = () => {
     localStorage.setItem('bg_preset', preset);
     localStorage.setItem('bg_primary', primaryColor);
     localStorage.setItem('bg_secondary', secondaryColor);
+    localStorage.setItem('bg_river_color', riverColor);
     localStorage.setItem('bg_opacity', String(opacity));
     localStorage.setItem('bg_intensity', String(intensity));
     localStorage.setItem('bg_speed', String(speed));
@@ -422,7 +814,7 @@ export const WebGLBackground: React.FC = () => {
     localStorage.setItem('bg_aurora_col1', auroraCol1);
     localStorage.setItem('bg_aurora_col2', auroraCol2);
     localStorage.setItem('bg_aurora_col3', auroraCol3);
-  }, [preset, primaryColor, secondaryColor, opacity, intensity, speed, glassmorphic, auroraIntensity, auroraPreset, auroraCol1, auroraCol2, auroraCol3]);
+  }, [preset, primaryColor, secondaryColor, riverColor, opacity, intensity, speed, glassmorphic, auroraIntensity, auroraPreset, auroraCol1, auroraCol2, auroraCol3]);
 
   // WebGL Shader pipeline setup
   useEffect(() => {
@@ -502,6 +894,12 @@ export const WebGLBackground: React.FC = () => {
     const auroraCol2Location = gl.getUniformLocation(program, 'u_aurora_col2');
     const auroraCol3Location = gl.getUniformLocation(program, 'u_aurora_col3');
     const mouseLocation = gl.getUniformLocation(program, 'u_mouse');
+    const moonPhaseLocation = gl.getUniformLocation(program, 'u_moon_phase');
+    const impactPosLocation = gl.getUniformLocation(program, 'u_impact_pos');
+    const shockwaveRadiusLocation = gl.getUniformLocation(program, 'u_shockwave_radius');
+    const shockwaveIntensityLocation = gl.getUniformLocation(program, 'u_shockwave_intensity');
+    const impactColorLocation = gl.getUniformLocation(program, 'u_impact_color');
+    const riverColorLocation = gl.getUniformLocation(program, 'u_river_color');
 
     let animationFrameId: number;
 
@@ -537,6 +935,7 @@ export const WebGLBackground: React.FC = () => {
 
       const [r1, g1, b1] = hexToRgb(primaryColor);
       const [r2, g2, b2] = hexToRgb(secondaryColor);
+      const [rc_r, rc_g, rc_b] = hexToRgb(riverColor);
       
       const [ac1_r, ac1_g, ac1_b] = hexToRgb(auroraCol1);
       const [ac2_r, ac2_g, ac2_b] = hexToRgb(auroraCol2);
@@ -553,6 +952,9 @@ export const WebGLBackground: React.FC = () => {
       }
       if (neonColor2Location) {
         gl.uniform3f(neonColor2Location, r2, g2, b2);
+      }
+      if (riverColorLocation) {
+        gl.uniform3f(riverColorLocation, rc_r, rc_g, rc_b);
       }
       if (speedLocation) {
         gl.uniform1f(speedLocation, speed);
@@ -575,6 +977,35 @@ export const WebGLBackground: React.FC = () => {
       if (auroraCol3Location) {
         gl.uniform3f(auroraCol3Location, ac3_r, ac3_g, ac3_b);
       }
+      if (moonPhaseLocation) {
+        gl.uniform1f(moonPhaseLocation, getRealWorldMoonPhase().phase);
+      }
+
+      // Update shockwave expansion and decay
+      if (shockwaveRef.current.intensity > 0.005) {
+        shockwaveRef.current.radius += 0.08 * (speed * 0.5 + 0.5);
+        shockwaveRef.current.intensity *= 0.94;
+      } else {
+        shockwaveRef.current.intensity = 0.0;
+      }
+
+      if (impactPosLocation) {
+        gl.uniform2f(impactPosLocation, shockwaveRef.current.x, shockwaveRef.current.y);
+      }
+      if (shockwaveRadiusLocation) {
+        gl.uniform1f(shockwaveRadiusLocation, shockwaveRef.current.radius);
+      }
+      if (shockwaveIntensityLocation) {
+        gl.uniform1f(shockwaveIntensityLocation, shockwaveRef.current.intensity);
+      }
+      if (impactColorLocation) {
+        gl.uniform3f(
+          impactColorLocation,
+          shockwaveRef.current.color[0],
+          shockwaveRef.current.color[1],
+          shockwaveRef.current.color[2]
+        );
+      }
 
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -593,27 +1024,41 @@ export const WebGLBackground: React.FC = () => {
         gl.deleteBuffer(positionBuffer);
       }
     };
-  }, [primaryColor, secondaryColor, speed, intensity, isDarkMode, auroraIntensity, auroraCol1, auroraCol2, auroraCol3]);
+  }, [primaryColor, secondaryColor, riverColor, speed, intensity, isDarkMode, auroraIntensity, auroraCol1, auroraCol2, auroraCol3]);
 
   const selectPreset = (p: Preset) => {
     setPreset(p.id);
     setPrimaryColor(p.primary);
     setSecondaryColor(p.secondary);
+    if (p.river) {
+      setRiverColor(p.river);
+      localStorage.setItem('bg_river_color', p.river);
+    }
   };
 
   const handleReset = () => {
     setPreset('cyan_ice');
     setPrimaryColor('#00f2fe');
     setSecondaryColor('#4facfe');
+    setRiverColor('#00f2fe');
     setOpacity(1.00);
-    setIntensity(1.6);
+    setIntensity(1.20);
     setSpeed(0.9);
     setGlassmorphic(true);
-    setAuroraIntensity(1.3);
+    setAuroraIntensity(0.85);
     setAuroraPreset('classic_green');
     setAuroraCol1('#0aff84');
     setAuroraCol2('#00ccff');
     setAuroraCol3('#ae26ed');
+    updatePointCloud({
+      enabled: true,
+      particleCount: 380,
+      sparkleSize: 1.55,
+      colorMode: 0,
+      speed: 0.35,
+      parallaxStrength: 1.35,
+      shootingStarsEnabled: true
+    });
   };
 
   return (
@@ -667,6 +1112,13 @@ export const WebGLBackground: React.FC = () => {
         }}
       />
 
+      {/* 3D WebGL Point Cloud Interactive Sparkle & Stardust Engine */}
+      <WebGLPointCloud
+        primaryColor={primaryColor}
+        secondaryColor={secondaryColor}
+        isDarkMode={isDarkMode}
+      />
+
       {/* Floating Configuration Widget - Shifted to bottom-left to avoid chatbot and toast collisions */}
       <div className="fixed bottom-6 left-6 z-[60] flex flex-col items-start gap-3 font-sans no-print">
         
@@ -678,7 +1130,7 @@ export const WebGLBackground: React.FC = () => {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 15 }}
               transition={{ type: "spring", stiffness: 350, damping: 26 }}
-              className="w-80 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 p-5 rounded-[28px] shadow-2xl flex flex-col gap-4 text-slate-800 dark:text-slate-100 text-left"
+              className="w-88 sm:w-96 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 p-5 rounded-[28px] shadow-2xl flex flex-col gap-4 text-slate-800 dark:text-slate-100 text-left"
             >
               {/* Header */}
               <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-3">
@@ -696,24 +1148,31 @@ export const WebGLBackground: React.FC = () => {
               </div>
 
               {/* Sub-tabs */}
-              <div className="flex bg-slate-100/80 dark:bg-slate-950/60 p-1 rounded-full text-[11px] font-bold">
+              <div className="grid grid-cols-4 bg-slate-100/80 dark:bg-slate-950/60 p-1 rounded-full text-[10px] font-bold">
                 <button
                   onClick={() => setActiveTab('preset')}
-                  className={`flex-1 py-1.5 rounded-full text-center transition-all cursor-pointer ${activeTab === 'preset' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                  className={`py-1.5 rounded-full text-center transition-all cursor-pointer ${activeTab === 'preset' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}
                 >
                   Màu Neon
                 </button>
                 <button
                   onClick={() => setActiveTab('custom')}
-                  className={`flex-1 py-1.5 rounded-full text-center transition-all cursor-pointer ${activeTab === 'custom' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                  className={`py-1.5 rounded-full text-center transition-all cursor-pointer ${activeTab === 'custom' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}
                 >
                   Tùy chỉnh
                 </button>
                 <button
                   onClick={() => setActiveTab('aurora')}
-                  className={`flex-1 py-1.5 rounded-full text-center transition-all cursor-pointer ${activeTab === 'aurora' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                  className={`py-1.5 rounded-full text-center transition-all cursor-pointer ${activeTab === 'aurora' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}
                 >
                   Cực quang
+                </button>
+                <button
+                  onClick={() => setActiveTab('pointcloud')}
+                  className={`py-1.5 rounded-full text-center transition-all cursor-pointer flex items-center justify-center gap-1 ${activeTab === 'pointcloud' ? 'bg-white dark:bg-slate-800 text-amber-600 dark:text-amber-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                >
+                  <Sparkles className="w-3 h-3 text-amber-500" />
+                  <span>Sao Van Gogh</span>
                 </button>
               </div>
 
@@ -743,6 +1202,48 @@ export const WebGLBackground: React.FC = () => {
                       </button>
                     );
                   })}
+
+                  {/* Quick Brightness Slider right inside presets tab */}
+                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 space-y-1">
+                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                      <span className="flex items-center gap-1"><Zap className="w-3 h-3 text-amber-500" /> Mức sáng Neon (Độ sáng núi & cảnh)</span>
+                      <span className="font-mono text-amber-500 font-bold">{intensity.toFixed(2)}x</span>
+                    </div>
+                    <input 
+                      type="range" 
+                      min="0.2" 
+                      max="2.5" 
+                      step="0.05"
+                      value={intensity}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        setIntensity(val);
+                        localStorage.setItem('bg_intensity', String(val));
+                      }}
+                      className="w-full accent-amber-500 cursor-pointer h-1.5 bg-slate-100 dark:bg-slate-950 rounded-full"
+                    />
+                  </div>
+
+                  {/* Quick Aurora Brightness Slider inside presets tab */}
+                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 space-y-1">
+                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                      <span className="flex items-center gap-1 text-emerald-500"><Sparkles className="w-3 h-3 text-emerald-500" /> Độ rực Cực quang (Aurora Brightness)</span>
+                      <span className="font-mono text-emerald-500 font-bold">{auroraIntensity.toFixed(1)}x</span>
+                    </div>
+                    <input 
+                      type="range" 
+                      min="0.1" 
+                      max="3.0" 
+                      step="0.05"
+                      value={auroraIntensity}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        setAuroraIntensity(val);
+                        localStorage.setItem('bg_aurora_intensity', String(val));
+                      }}
+                      className="w-full accent-emerald-500 cursor-pointer h-1.5 bg-slate-100 dark:bg-slate-950 rounded-full"
+                    />
+                  </div>
                 </div>
               )}
 
@@ -874,6 +1375,71 @@ export const WebGLBackground: React.FC = () => {
                     </div>
                   </div>
 
+                  {/* Custom River / Fractal Noise Color */}
+                  <div className="space-y-2 p-2.5 bg-slate-50/50 dark:bg-slate-950/40 rounded-2xl border border-slate-100/80 dark:border-slate-800/80">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-black text-cyan-600 dark:text-cyan-400 uppercase tracking-wider flex items-center gap-1">
+                        🌊 Màu Dòng Sông (Fractal Noise)
+                      </span>
+                      <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-lg px-2 py-0.5 shadow-xs">
+                        <span className="w-2.5 h-2.5 rounded-full border border-white/20 shrink-0" style={{ backgroundColor: riverColor }} />
+                        <input 
+                          type="text"
+                          value={riverColor}
+                          onChange={(e) => {
+                            setRiverColor(e.target.value);
+                            localStorage.setItem('bg_river_color', e.target.value);
+                          }}
+                          className="w-14 text-center text-[9px] font-mono uppercase bg-transparent border-0 focus:outline-none p-0 text-slate-600 dark:text-slate-400 font-bold"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Quick Swatches for River Fractal Noise */}
+                    <div className="flex gap-2 justify-center py-0.5">
+                      {['#00f2fe', '#00f5d4', '#0055ff', '#9b5de5', '#ff007f', '#ffd200', '#ff5500', '#10b981'].map((hex) => {
+                        const isSelected = riverColor.toLowerCase() === hex.toLowerCase();
+                        return (
+                          <button
+                            key={hex}
+                            onClick={() => {
+                              setRiverColor(hex);
+                              localStorage.setItem('bg_river_color', hex);
+                            }}
+                            className={`w-5 h-5 rounded-full border cursor-pointer transition-all hover:scale-110 active:scale-90 ${
+                              isSelected ? 'border-slate-700 dark:border-white ring-2 ring-cyan-500/40 scale-110' : 'border-white/20 shadow-xs'
+                            }`}
+                            style={{ backgroundColor: hex }}
+                            title={hex}
+                          />
+                        );
+                      })}
+                    </div>
+
+                    {/* Hue Slider for River */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[8px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider leading-none">
+                        <span>Quang phổ Màu Dòng Sông</span>
+                        <span>{hexToHue(riverColor)}°</span>
+                      </div>
+                      <input 
+                        type="range"
+                        min="0"
+                        max="360"
+                        value={hexToHue(riverColor)}
+                        onChange={(e) => {
+                          const hex = hueToHex(Number(e.target.value));
+                          setRiverColor(hex);
+                          localStorage.setItem('bg_river_color', hex);
+                        }}
+                        className="w-full h-2 rounded-full cursor-pointer appearance-none outline-none accent-cyan-500"
+                        style={{
+                          background: 'linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)'
+                        }}
+                      />
+                    </div>
+                  </div>
+
                   {/* Opacity Slider */}
                   <div className="space-y-1">
                     <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
@@ -894,17 +1460,21 @@ export const WebGLBackground: React.FC = () => {
                   {/* Glow intensity Slider */}
                   <div className="space-y-1">
                     <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                      <span className="flex items-center gap-1"><Zap className="w-3 h-3" /> Mức sáng Neon</span>
-                      <span className="font-mono">{intensity.toFixed(1)}x</span>
+                      <span className="flex items-center gap-1"><Zap className="w-3 h-3 text-amber-500" /> Mức sáng Neon (Độ sáng núi & cảnh)</span>
+                      <span className="font-mono">{intensity.toFixed(2)}x</span>
                     </div>
                     <input 
                       type="range" 
-                      min="0.4" 
-                      max="3.0" 
-                      step="0.2"
+                      min="0.2" 
+                      max="2.5" 
+                      step="0.05"
                       value={intensity}
-                      onChange={(e) => setIntensity(Number(e.target.value))}
-                      className="w-full accent-indigo-500 cursor-pointer h-1.5 bg-slate-100 dark:bg-slate-950 rounded-full"
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        setIntensity(val);
+                        localStorage.setItem('bg_intensity', String(val));
+                      }}
+                      className="w-full accent-amber-500 cursor-pointer h-1.5 bg-slate-100 dark:bg-slate-950 rounded-full"
                     />
                   </div>
 
@@ -939,11 +1509,15 @@ export const WebGLBackground: React.FC = () => {
                     </div>
                     <input 
                       type="range" 
-                      min="0.0" 
-                      max="2.5" 
-                      step="0.1"
+                      min="0.1" 
+                      max="3.0" 
+                      step="0.05"
                       value={auroraIntensity}
-                      onChange={(e) => setAuroraIntensity(Number(e.target.value))}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        setAuroraIntensity(val);
+                        localStorage.setItem('bg_aurora_intensity', String(val));
+                      }}
                       className="w-full accent-emerald-500 cursor-pointer h-1.5 bg-slate-100 dark:bg-slate-950 rounded-full"
                     />
                   </div>
@@ -1073,7 +1647,250 @@ export const WebGLBackground: React.FC = () => {
                 </div>
               )}
 
-              {/* Glassmorphic Checkbox Toggle */}
+              {/* WebGL Point Cloud & Van Gogh Starry Sky Tab */}
+              {activeTab === 'pointcloud' && (
+                <div className="space-y-3.5 max-h-[19.5rem] overflow-y-auto pr-1 text-slate-800 dark:text-slate-100">
+                  
+                  {/* Master Toggle */}
+                  <div className="flex items-center justify-between p-3 bg-amber-50/70 dark:bg-amber-950/25 rounded-2xl border border-amber-200/70 dark:border-amber-900/50">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 bg-amber-500/15 rounded-xl text-amber-500 shadow-xs">
+                        <Sparkles className={`w-4 h-4 ${pcEnabled ? 'animate-pulse' : ''}`} />
+                      </div>
+                      <div>
+                        <span className="text-xs font-black block text-slate-800 dark:text-slate-100">
+                          Bụi Sao Rơi Lơ Lửng (Van Gogh)
+                        </span>
+                        <span className="text-[10px] text-amber-800/80 dark:text-amber-300/80 font-medium">
+                          {pcEnabled ? `${pcCount.toLocaleString()} hạt sao nhỏ rơi chậm rãi & lấp lánh 3D` : 'Đang tắt'}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => updatePointCloud({ enabled: !pcEnabled })}
+                      className={`w-10 h-5 rounded-full p-0.5 transition-colors duration-200 outline-none cursor-pointer flex items-center ${
+                        pcEnabled ? 'bg-amber-500 justify-end' : 'bg-slate-300 dark:bg-slate-700 justify-start'
+                      }`}
+                    >
+                      <motion.div 
+                        layout 
+                        className="w-4 h-4 bg-white rounded-full shadow-md"
+                        transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                      />
+                    </button>
+                  </div>
+
+                  {pcEnabled && (
+                    <>
+                      {/* Shooting Star (Sao Băng Nghệ Thuật) Card */}
+                      <div className="flex items-center justify-between p-3 rounded-2xl bg-gradient-to-r from-amber-500/10 via-purple-500/10 to-indigo-500/10 border border-amber-500/25">
+                        <div className="flex items-center gap-2.5">
+                          <span className="text-base">🌠</span>
+                          <div className="flex flex-col text-left">
+                            <span className="text-xs font-black block">Sao Băng Vũ Trụ</span>
+                            <span className="text-[10px] text-amber-700/80 dark:text-amber-300/80 font-medium">
+                              {pcShootingStars ? 'Thỉnh thoảng vụt qua chéo bầu trời' : 'Đang tắt'}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {pcShootingStars && (
+                            <button
+                              type="button"
+                              onClick={() => window.dispatchEvent(new CustomEvent('trigger-shooting-star'))}
+                              className="px-2.5 py-1 text-[10px] font-extrabold bg-amber-500/20 hover:bg-amber-500/30 text-amber-800 dark:text-amber-200 rounded-lg transition-all cursor-pointer border border-amber-500/35 active:scale-95"
+                              title="Kích hoạt vệt sao băng bay qua ngay lập tức"
+                            >
+                              ✨ Ngắm sao ngay
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => updatePointCloud({ shootingStarsEnabled: !pcShootingStars })}
+                            className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-200 outline-none cursor-pointer flex items-center ${
+                              pcShootingStars ? 'bg-amber-500 justify-end' : 'bg-slate-300 dark:bg-slate-700 justify-start'
+                            }`}
+                          >
+                            <motion.div 
+                              layout 
+                              className="w-4 h-4 bg-white rounded-full shadow-md"
+                              transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                            />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Comet Tail (Vệt Sáng Đuôi Sao Chổi Chuột) Card */}
+                      <div className="flex items-center justify-between p-3 rounded-2xl bg-gradient-to-r from-cyan-500/10 via-amber-500/10 to-blue-500/10 border border-cyan-500/25">
+                        <div className="flex items-center gap-2.5">
+                          <span className="text-base">☄️</span>
+                          <div className="flex flex-col text-left">
+                            <span className="text-xs font-black block">Đuôi Sao Chổi (Comet Tail)</span>
+                            <span className="text-[10px] text-cyan-700/80 dark:text-cyan-300/80 font-medium">
+                              {pcCometTail ? 'Vệt sáng mềm mại & tàn bụi sao theo con trỏ chuột' : 'Đang tắt'}
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => updatePointCloud({ cometTailEnabled: !pcCometTail })}
+                          className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-200 outline-none cursor-pointer flex items-center shrink-0 ${
+                            pcCometTail ? 'bg-cyan-500 justify-end' : 'bg-slate-300 dark:bg-slate-700 justify-start'
+                          }`}
+                        >
+                          <motion.div 
+                            layout 
+                            className="w-4 h-4 bg-white rounded-full shadow-md"
+                            transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                          />
+                        </button>
+                      </div>
+
+                      {/* Gentle Parallax Depth Slider */}
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                          <span className="flex items-center gap-1">
+                            <Compass className="w-3 h-3 text-amber-500" /> Thị Sai Không Gian (Dịu Êm, Tĩnh Lặng)
+                          </span>
+                          <span className="font-mono">{pcParallax.toFixed(2)}x</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0.0"
+                          max="1.0"
+                          step="0.05"
+                          value={pcParallax}
+                          onChange={(e) => updatePointCloud({ parallaxStrength: Number(e.target.value) })}
+                          className="w-full accent-amber-500 cursor-pointer h-1.5 bg-slate-100 dark:bg-slate-950 rounded-full"
+                        />
+                      </div>
+
+                      {/* Color Harmonics */}
+                      <div className="space-y-1.5">
+                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
+                          Sắc Màu Hạt Sao (Van Gogh Harmonics)
+                        </span>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {[
+                            { id: 0, label: '🌌 Đêm Đầy Sao (Hổ Phách & Lam)' },
+                            { id: 1, label: '🌻 Hướng Dương & Diên Vĩ' },
+                            { id: 2, label: '☕ Cà Phê Đêm (Vàng Ấm)' },
+                            { id: 3, label: '🎨 Đồng Bộ Theme Neon' },
+                          ].map((c) => {
+                            const isSelected = pcColorMode === c.id;
+                            return (
+                              <button
+                                key={c.id}
+                                type="button"
+                                onClick={() => updatePointCloud({ colorMode: c.id })}
+                                className={`py-2 px-2.5 rounded-xl border text-[10px] font-bold transition-all cursor-pointer text-center ${
+                                  isSelected
+                                    ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                                    : 'border-slate-150 dark:border-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-950/40 text-slate-600 dark:text-slate-400'
+                                }`}
+                              >
+                                {c.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Particle Count Slider (Fine Range 100 - 800) */}
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                          <span className="flex items-center gap-1">
+                            <Orbit className="w-3 h-3 text-amber-500" /> Mật độ Bụi Sao (Thoáng đãng, thanh tao)
+                          </span>
+                          <span className="font-mono">{pcCount.toLocaleString()} hạt</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="100"
+                          max="800"
+                          step="25"
+                          value={pcCount}
+                          onChange={(e) => updatePointCloud({ particleCount: Number(e.target.value) })}
+                          className="w-full accent-amber-500 cursor-pointer h-1.5 bg-slate-100 dark:bg-slate-950 rounded-full"
+                        />
+                      </div>
+
+                      {/* Speed Slider (Slow & Meditative 0.10 - 0.70) */}
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                          <span className="flex items-center gap-1">
+                            <Waves className="w-3 h-3 text-amber-500" /> Tốc độ Rơi Chậm Rãi (Thiền định)
+                          </span>
+                          <span className="font-mono">{pcSpeed.toFixed(2)}x</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0.10"
+                          max="0.70"
+                          step="0.05"
+                          value={pcSpeed}
+                          onChange={(e) => updatePointCloud({ speed: Number(e.target.value) })}
+                          className="w-full accent-amber-500 cursor-pointer h-1.5 bg-slate-100 dark:bg-slate-950 rounded-full"
+                        />
+                      </div>
+
+                      {/* Sparkle Size Slider */}
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                          <span className="flex items-center gap-1">
+                            <Sparkle className="w-3 h-3 text-amber-500" /> Vầng Hào Quang Sao (Luminous Corona)
+                          </span>
+                          <span className="font-mono">{pcSparkleSize.toFixed(2)}x</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0.9"
+                          max="2.2"
+                          step="0.1"
+                          value={pcSparkleSize}
+                          onChange={(e) => updatePointCloud({ sparkleSize: Number(e.target.value) })}
+                          className="w-full accent-amber-500 cursor-pointer h-1.5 bg-slate-100 dark:bg-slate-950 rounded-full"
+                        />
+                      </div>
+
+                      {/* Real-world Auto Lunar Phase Card */}
+                      {(() => {
+                        const lunar = getRealWorldMoonPhase();
+                        return (
+                          <div className="p-3 bg-gradient-to-r from-amber-500/15 via-indigo-500/10 to-blue-500/15 rounded-2xl border border-amber-500/30 flex items-center justify-between">
+                            <div className="flex items-center gap-2.5">
+                              <span className="text-xl">🌕</span>
+                              <div className="flex flex-col text-left">
+                                <span className="text-[11px] font-black text-amber-500 flex items-center gap-1">
+                                  <span>Chu kỳ Mặt Trăng Thiên Văn</span>
+                                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-300 font-bold uppercase tracking-wider">Tự Động</span>
+                                </span>
+                                <span className="text-[10px] font-semibold text-slate-700 dark:text-slate-200">
+                                  {lunar.name}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-xs font-mono font-bold text-amber-500">{lunar.illuminated}%</span>
+                              <span className="block text-[8px] text-slate-400">chiếu sáng</span>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Poetic Interaction Tip */}
+                      <div className="p-3 bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-blue-500/10 rounded-2xl border border-amber-500/20 text-[10px] text-slate-600 dark:text-slate-300 leading-relaxed flex items-start gap-2">
+                        <span className="text-sm shrink-0">🎨</span>
+                        <span>
+                          <strong>Không Gian Vũ Trụ 3D & Núi Neon:</strong> Mặt trăng tự động cập nhật chu kỳ trăng thực tế theo thời gian. Sao băng 3D xuất hiện từ chiều sâu không gian (Z âm) và lao về phía trước, chìm sau dãy núi rực sắc neon. Khi vệt sao chổi quét qua đỉnh núi, những hạt bụi sao lấp lánh sẽ bừng sáng theo sắc độ của núi!
+                        </span>
+                      </div>
+                    </>
+                  )}
+
+                </div>
+              )}
               <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-950/30 p-3 rounded-2xl border border-slate-150 dark:border-slate-800/50 mt-1">
                 <div className="flex flex-col gap-0.5 text-left">
                   <span className="text-xs font-black flex items-center gap-1">

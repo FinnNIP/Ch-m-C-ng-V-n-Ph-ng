@@ -3,9 +3,11 @@ import { Employee, TimeLog } from '../types';
 import { addTimeLog, updateTimeLog, deleteTimeLog, saveDayAttendance } from '../sheets';
 import { getVietnamHolidayName } from '../holidays';
 import { ConfettiEffect } from './ConfettiEffect';
+import { recalculateAnnualLeave } from "../utils/leaveUtils";
 import { motion, AnimatePresence } from 'motion/react';
 import { formatGuestName, getEmployeeDisplayName } from '../utils/nameUtils';
 import { RandomLoader } from './RandomLoader';
+import { AdminDashboard } from "./AdminDashboard";
 import { 
   Clock, 
   CheckCircle2, 
@@ -37,9 +39,10 @@ interface AttendanceTabProps {
   timeLogs: TimeLog[];
   onLogAdded: () => void;
   isLoading?: boolean;
+  onShowToast?: (message: string, type: 'success' | 'error' | 'warning' | 'info') => void;
 }
 
-export default function AttendanceTab({ accessToken, employees, timeLogs = [], onLogAdded, isLoading = false }: AttendanceTabProps) {
+export default function AttendanceTab({ accessToken, employees, timeLogs = [], onLogAdded, isLoading = false, onShowToast }: AttendanceTabProps) {
   const isAdmin = Boolean(accessToken && accessToken !== 'local');
   const [selectedEmpName, setSelectedEmpName] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -49,7 +52,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   });
-  const [status, setStatus] = useState<'Có đi làm' | 'Không đi làm' | 'Nghỉ phép'>('Có đi làm');
+  const [status, setStatus] = useState<'Có đi làm' | 'Không đi làm' | 'Nghỉ phép' | 'Nghỉ lễ'>('Có đi làm');
   
   // OT states
   const [hasOt, setHasOt] = useState<boolean>(false);
@@ -58,7 +61,6 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
   
   const [note, setNote] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [showConfetti, setShowConfetti] = useState(false);
   const [recentUpdates, setRecentUpdates] = useState<Set<string>>(new Set());
   const prevTimeLogsRef = useRef(timeLogs);
@@ -98,7 +100,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
 
   // Batch/Company Mode states
   const [batchMode, setBatchMode] = useState<'individual' | 'company'>('individual');
-  const [companyStatuses, setCompanyStatuses] = useState<{ [empName: string]: 'Có đi làm' | 'Không đi làm' | 'Nghỉ phép' }>({});
+  const [companyStatuses, setCompanyStatuses] = useState<{ [empName: string]: 'Có đi làm' | 'Không đi làm' | 'Nghỉ phép' | 'Nghỉ lễ' }>({});
   const [companyNotes, setCompanyNotes] = useState<{ [empName: string]: string }>({});
   const [companyHasOt, setCompanyHasOt] = useState<{ [empName: string]: boolean }>({});
   const [companyOtFrom, setCompanyOtFrom] = useState<{ [empName: string]: string }>({});
@@ -107,7 +109,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
 
   // Modal State for Batch Editing Row Detail
   const [editingEmployeeForBatch, setEditingEmployeeForBatch] = useState<string | null>(null);
-  const [modalStatus, setModalStatus] = useState<'Có đi làm' | 'Không đi làm' | 'Nghỉ phép'>('Có đi làm');
+  const [modalStatus, setModalStatus] = useState<'Có đi làm' | 'Không đi làm' | 'Nghỉ phép' | 'Nghỉ lễ'>('Có đi làm');
   const [modalHasOt, setModalHasOt] = useState<boolean>(false);
   const [modalOtFrom, setModalOtFrom] = useState<string>('18:00');
   const [modalOtTo, setModalOtTo] = useState<string>('21:00');
@@ -262,7 +264,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
   const handleBatchSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsBatchSubmitting(true);
-    setFeedback(null);
+    
 
     try {
       const updates = employees.map(emp => {
@@ -283,10 +285,24 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
 
       await saveDayAttendance(accessToken, date, updates, timeLogs);
 
-      setFeedback({
-        type: 'success',
-        message: `Đã cập nhật công thành công cho toàn bộ công ty ngày ${date}!`
+      onShowToast?.(`Đã cập nhật công thành công cho toàn bộ công ty ngày ${date}!`, 'success');
+
+      // Check warnings
+      const warnings: string[] = [];
+      updates.forEach(u => {
+        if (u.status === 'Nghỉ phép') {
+          const empReport = leaveReports.find(r => r.employee.name === u.employeeName);
+          const existingLog = timeLogs.find(log => log.date === date && log.employeeName === u.employeeName);
+          const usedNow = empReport ? empReport.leaveUsed + (existingLog?.status === 'Nghỉ phép' ? 0 : 1) : 1;
+          const entitlement = empReport ? empReport.leaveEntitlement : 0;
+          if (usedNow >= entitlement) {
+            warnings.push(u.employeeName);
+          }
+        }
       });
+      if (warnings.length > 0) {
+        onShowToast?.(`⚠️ Cảnh báo: Các nhân viên sau đã hết/vượt phép năm: ${warnings.join(', ')}`, 'warning');
+      }
 
       setShowConfetti(true);
       onLogAdded();
@@ -295,10 +311,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
       }, 1200);
     } catch (err: any) {
       console.error(err);
-      setFeedback({
-        type: 'error',
-        message: `Lỗi lưu chấm công cả ngày: ${err.message}`
-      });
+      onShowToast?.(`Lỗi lưu chấm công cả phòng: ${err.message}`, 'error');
     } finally {
       setIsBatchSubmitting(false);
     }
@@ -312,200 +325,32 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
   const currentYear = useMemo(() => new Date().getFullYear(), []);
   const currentMonth = useMemo(() => new Date().getMonth() + 1, []);
 
-  // Helper to parse registered date format (e.g. "08/07/2026" or "2026-07-08")
-  const parseRegisteredDate = (dateStr: string) => {
-    if (!dateStr) return null;
-    try {
-      if (dateStr.includes('/')) {
-        const parts = dateStr.trim().split('/');
-        return {
-          day: parseInt(parts[0], 10),
-          month: parseInt(parts[1], 10),
-          year: parseInt(parts[2], 10)
-        };
-      } else if (dateStr.includes('-')) {
-        const parts = dateStr.trim().split('-');
-        return {
-          year: parseInt(parts[0], 10),
-          month: parseInt(parts[1], 10),
-          day: parseInt(parts[2], 10)
-        };
-      }
-    } catch {
-      return null;
-    }
-    return null;
-  };
-
   // Leave calculation according to Law (Standard Mode)
   const leaveReports = useMemo(() => {
-    const realDate = new Date();
-    const realYear = realDate.getFullYear();
-    const realMonth = realDate.getMonth() + 1;
-    let capMonth = 12;
-    if (currentYear === realYear) {
-      capMonth = realMonth;
-    } else if (currentYear > realYear) {
-      capMonth = 0;
-    }
-
-    return employees.map(emp => {
-      let monthsWorkedInSelectedYear = capMonth;
-      const rDate = parseRegisteredDate(emp.registeredAt);
-
-      if (rDate) {
-        if (rDate.year > currentYear) {
-          monthsWorkedInSelectedYear = 0;
-        } else if (rDate.year === currentYear) {
-          monthsWorkedInSelectedYear = Math.max(0, capMonth - rDate.month + 1);
-        }
-      }
-
-      const rLeft = emp.leftAt ? parseRegisteredDate(emp.leftAt) : null;
-      if (rLeft) {
-        if (rLeft.year < currentYear) {
-          monthsWorkedInSelectedYear = 0;
-        } else if (rLeft.year === currentYear) {
-          const startMonth = rDate && rDate.year === currentYear ? rDate.month : 1;
-          const endMonth = Math.min(rLeft.month, capMonth);
-          monthsWorkedInSelectedYear = Math.max(0, endMonth - startMonth + 1);
-        }
-      }
-
-      const initialCarryover = (() => {
-        if (currentYear !== 2026) return 0;
-        if (emp.leaveCarryover !== undefined) return emp.leaveCarryover;
-        const nameLower = emp.name.toLowerCase();
-        if (nameLower.includes('vũ') || nameLower.includes('vu')) return 12;
-        if (nameLower.includes('dũng') || nameLower.includes('dung')) return 10;
-        if (nameLower.includes('hảo') || nameLower.includes('hao')) return 6;
-        return 0;
-      })();
-
-      const ytdLeaveLogs = timeLogs.filter(log => {
-        const [y] = log.date.split('-');
-        const logYear = parseInt(y, 10);
-        return log.employeeName === emp.name && log.status === 'Nghỉ phép' && logYear === currentYear;
-      }).sort((a, b) => b.date.localeCompare(a.date));
-
-      // Divide logs by Tet 2026 boundary (Feb 17, 2026)
-      const beforeTetLogs = ytdLeaveLogs.filter(log => {
-        if (currentYear !== 2026) return false;
-        return log.date < '2026-02-17';
-      });
-      const onOrAfterTetLogs = ytdLeaveLogs.filter(log => {
-        if (currentYear !== 2026) return true;
-        return log.date >= '2026-02-17';
-      });
-
-      const leaveUsedBeforeTet = beforeTetLogs.length;
-      const leaveUsedAfterTet = onOrAfterTetLogs.length;
-
-      // 2025 carryover is consumed by leave before Tet
-      const carryoverUsed = Math.min(initialCarryover, leaveUsedBeforeTet);
-      const carryoverExpired = initialCarryover - carryoverUsed; // Forfeited after Tet
-      const excessBeforeTet = Math.max(0, leaveUsedBeforeTet - initialCarryover);
-
-      // Base entitlement for currentYear
-      const baseEntitlement = emp.leaveAllowance !== undefined 
-        ? emp.leaveAllowance 
-        : monthsWorkedInSelectedYear;
-
-      // Excess before Tet and all after Tet are deducted from base entitlement
-      const leaveRemaining = baseEntitlement - (excessBeforeTet + leaveUsedAfterTet);
-      const leaveEntitlement = baseEntitlement + carryoverUsed;
-      const leaveUsed = ytdLeaveLogs.length;
-
-      return {
-        employee: emp,
-        monthsWorkedInSelectedYear,
-        leaveEntitlement,
-        leaveUsed,
-        leaveRemaining,
-        ytdLeaveLogs,
-        initialCarryover,
-        carryoverUsed,
-        carryoverExpired,
-        baseEntitlement,
-        leaveUsedBeforeTet,
-        leaveUsedAfterTet
-      };
-    });
+    return employees.map(emp => recalculateAnnualLeave(emp, timeLogs, currentYear));
   }, [employees, timeLogs, currentYear]);
 
   // Leave calculation according to Accountant Thanh Chau (Accountant Mode)
   const accountantLeaveReports = useMemo(() => {
-    // Group YTD leave logs by employee name for fast lookup
-    const ytdLeaveLogsByEmp = new Map<string, TimeLog[]>();
-    for (const log of timeLogs) {
-      if (log.status === 'Nghỉ phép') {
-        const logYear = parseInt(log.date.split('-')[0], 10);
-        if (logYear === currentYear) {
-          const empKey = log.employeeName.trim().toLowerCase();
-          if (!ytdLeaveLogsByEmp.has(empKey)) {
-            ytdLeaveLogsByEmp.set(empKey, []);
-          }
-          ytdLeaveLogsByEmp.get(empKey)!.push(log);
-        }
-      }
-    }
-
-    const realDate = new Date();
-    const realYear = realDate.getFullYear();
-    const realMonth = realDate.getMonth() + 1;
-    let capMonth = 12;
-    if (currentYear === realYear) {
-      capMonth = realMonth;
-    } else if (currentYear > realYear) {
-      capMonth = 0;
-    }
-
+    // We can just use the standard recalculation logic to ensure consistency
+    // across both modes, simply adapting it to the shape Accountant Mode needs.
     return employees.map(emp => {
-      const empKey = emp.name.trim().toLowerCase();
-      const systemLeaveLogs = ytdLeaveLogsByEmp.get(empKey) || [];
-      const systemLeaveUsed = systemLeaveLogs.length;
-      
-      let monthsWorkedInSelectedYear = capMonth;
-      const rDate = parseRegisteredDate(emp.registeredAt);
-
-      if (rDate) {
-        if (rDate.year > currentYear) {
-          monthsWorkedInSelectedYear = 0;
-        } else if (rDate.year === currentYear) {
-          monthsWorkedInSelectedYear = Math.max(0, capMonth - rDate.month + 1);
-        }
-      }
-
-      const rLeft = emp.leftAt ? parseRegisteredDate(emp.leftAt) : null;
-      if (rLeft) {
-        if (rLeft.year < currentYear) {
-          monthsWorkedInSelectedYear = 0;
-        } else if (rLeft.year === currentYear) {
-          const startMonth = rDate && rDate.year === currentYear ? rDate.month : 1;
-          const endMonth = Math.min(rLeft.month, capMonth);
-          monthsWorkedInSelectedYear = Math.max(0, endMonth - startMonth + 1);
-        }
-      }
-
-      const carryover = emp.leaveCarryover || 0;
-      const allowance = emp.leaveAllowance !== undefined ? emp.leaveAllowance : monthsWorkedInSelectedYear; // auto accrue
-      const totalEntitled = carryover + allowance;
-      const remainingByChat = totalEntitled - systemLeaveUsed;
+      const calc = recalculateAnnualLeave(emp, timeLogs, currentYear);
       
       return {
         key: emp.name,
         displayName: getEmployeeDisplayName(emp.name, isAdmin, false, emp.displayName),
-        category: carryover > 0 ? 'Có phép gối đầu' : 'Phép chuẩn',
-        ruleDesc: carryover > 0 
-          ? `Phép gối đầu: ${carryover} ngày. Phép năm nay: ${allowance} ngày. Tổng cộng: ${totalEntitled} ngày.` 
-          : `Phép năm nay: ${allowance} ngày.`,
-        totalEntitled,
-        usedByChat: systemLeaveUsed, // we trust the system now
-        remainingByChat,
+        category: calc.initialCarryover > 0 ? 'Có phép gối đầu' : 'Phép chuẩn',
+        ruleDesc: calc.initialCarryover > 0 
+          ? `Phép gối đầu: ${calc.initialCarryover} ngày. Phép năm nay: ${calc.baseEntitlement} ngày. Tổng cộng: ${calc.initialCarryover + calc.baseEntitlement} ngày.` 
+          : `Phép năm nay: ${calc.baseEntitlement} ngày.`,
+        totalEntitled: calc.leaveEntitlement, // Use the proper recalculated entitlement
+        usedByChat: calc.leaveUsed,
+        remainingByChat: calc.leaveRemaining,
         chatQuote: '',
         matchedEmployee: emp,
-        systemLeaveUsed,
-        systemLeaveLogs,
+        systemLeaveUsed: calc.leaveUsed,
+        systemLeaveLogs: calc.ytdLeaveLogs,
         isMatched: true
       };
     });
@@ -541,7 +386,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
     }
 
     setIsSubmitting(true);
-    setFeedback(null);
+    
 
     try {
       const existingLog = timeLogs.find(
@@ -560,26 +405,27 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
       if (existingLog && existingLog.rowIndex) {
         logData.rowIndex = existingLog.rowIndex;
         await updateTimeLog(accessToken, logData);
-        setFeedback({
-          type: 'success',
-          message: `Đã cập nhật nhật ký thành công cho ${selectedEmployee.name} ngày ${date}!`
-        });
+        onShowToast?.(`Đã cập nhật nhật ký thành công cho ${selectedEmployee.name} ngày ${date}!`, 'success');
       } else {
         await addTimeLog(accessToken, logData);
-        setFeedback({
-          type: 'success',
-          message: `Ghi nhận thành công cho nhân viên ${selectedEmployee.name} ngày ${date}!`
-        });
+        onShowToast?.(`Ghi nhận thành công cho nhân viên ${selectedEmployee.name} ngày ${date}!`, 'success');
+      }
+
+      if (status === 'Nghỉ phép') {
+        const empReport = leaveReports.find(r => r.employee.name === selectedEmployee.name);
+        // Note: the report will be updated after onLogAdded, so we add 1 to leaveUsed manually if it's a new log
+        const usedNow = empReport ? empReport.leaveUsed + (existingLog?.status === 'Nghỉ phép' ? 0 : 1) : 1;
+        const entitlement = empReport ? empReport.leaveEntitlement : 0;
+        if (usedNow >= entitlement) {
+           onShowToast?.(`⚠️ Cảnh báo: Nhân viên ${selectedEmployee.name} đã sử dụng hết hoặc vượt quá số ngày nghỉ phép năm! (Đã dùng ${usedNow}/${entitlement} ngày)`, 'warning');
+        }
       }
 
       setShowConfetti(true);
       onLogAdded();
     } catch (err: any) {
       console.error(err);
-      setFeedback({
-        type: 'error',
-        message: `Lỗi đồng bộ dữ liệu với Google Sheet: ${err.message}`
-      });
+      onShowToast?.(`Lỗi đồng bộ dữ liệu với Google Sheet: ${err.message}`, 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -600,15 +446,12 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
     }
 
     setIsSubmitting(true);
-    setFeedback(null);
+    
 
     try {
       await deleteTimeLog(accessToken, existingLog.rowIndex);
       
-      setFeedback({
-        type: 'success',
-        message: `Đã xóa thành công và khôi phục trạng thái mặc định cho ${selectedEmployee.name} ngày ${date}!`
-      });
+      onShowToast?.(`Đã xóa thành công và khôi phục trạng thái mặc định cho ${selectedEmployee.name} ngày ${date}!`, 'success');
 
       setNote('');
       setHasOt(false);
@@ -616,10 +459,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
       onLogAdded();
     } catch (err: any) {
       console.error(err);
-      setFeedback({
-        type: 'error',
-        message: `Lỗi khi xóa nhật ký chấm công: ${err.message}`
-      });
+      onShowToast?.(`Lỗi khi xóa nhật ký chấm công: ${err.message}`, 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -774,6 +614,14 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
         </div>
       </div>
 
+      {isAdmin && (
+        <AdminDashboard 
+          employees={employees} 
+          leaveReports={leaveReports} 
+          currentMonth={viewMonth} 
+        />
+      )}
+
       <AnimatePresence mode="wait">
         {viewMode === 'calendar' ? (
           <motion.div
@@ -837,6 +685,59 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
               </div>
             </div>
 
+            {/* Quick Stats for Selected Employee */}
+            {(() => {
+              if (calendarFilter === 'all') return null;
+              
+              let presentCount = 0;
+              let leaveCount = 0;
+              let absentCount = 0;
+              let holidayCount = 0;
+              
+              calendarDays.forEach(cell => {
+                if (!cell.isCurrentMonth) return;
+                const detail = getEmployeeStatusOnDate(calendarFilter, cell.dateStr, cell.dayOfWeek);
+                const hn = getVietnamHolidayName(cell.dateStr);
+                
+                if (detail.status === 'Có đi làm') {
+                   presentCount++;
+                } else if (detail.status === 'Nghỉ phép') {
+                   leaveCount++;
+                   presentCount++; // Vẫn tính công
+                } else if (detail.status === 'Không đi làm') {
+                   if (hn) {
+                     holidayCount++;
+                     presentCount++; // Lễ Nhà nước vẫn tính công
+                   }
+                   else if (cell.dayOfWeek !== 0) absentCount++;
+                } else if (detail.status === 'Ngày lễ' || detail.status === 'Nghỉ lễ') {
+                   holidayCount++;
+                   presentCount++; // Vẫn tính công
+                }
+              });
+              
+              return (
+                 <div className="flex flex-wrap gap-4 md:gap-6 mb-5 p-3.5 rounded-2xl bg-slate-50/80 dark:bg-slate-950/40 border border-slate-150/60 dark:border-slate-850 justify-center sm:justify-start shadow-sm">
+                   <div className="flex items-center gap-2.5">
+                     <span className="w-7 h-7 rounded-full bg-emerald-500 text-white flex items-center justify-center font-black text-xs shadow-md shadow-emerald-500/20">{presentCount}</span>
+                     <span className="text-xs font-extrabold text-slate-600 dark:text-slate-300 uppercase tracking-wide">Đi làm</span>
+                   </div>
+                   <div className="flex items-center gap-2.5">
+                     <span className="w-7 h-7 rounded-full bg-amber-500 text-white flex items-center justify-center font-black text-xs shadow-md shadow-amber-500/20">{leaveCount}</span>
+                     <span className="text-xs font-extrabold text-slate-600 dark:text-slate-300 uppercase tracking-wide">Phép năm</span>
+                   </div>
+                   <div className="flex items-center gap-2.5">
+                     <span className="w-7 h-7 rounded-full bg-sky-500 text-white flex items-center justify-center font-black text-xs shadow-md shadow-sky-500/20">{holidayCount}</span>
+                     <span className="text-xs font-extrabold text-slate-600 dark:text-slate-300 uppercase tracking-wide">Nghỉ lễ</span>
+                   </div>
+                   <div className="flex items-center gap-2.5">
+                     <span className="w-7 h-7 rounded-full bg-rose-500 text-white flex items-center justify-center font-black text-xs shadow-md shadow-rose-500/20">{absentCount}</span>
+                     <span className="text-xs font-extrabold text-slate-600 dark:text-slate-300 uppercase tracking-wide">Vắng mặt</span>
+                   </div>
+                 </div>
+              );
+            })()}
+
             {/* Calendar Grid Header (Mon to Sun) */}
             <div className="grid grid-cols-7 gap-1.5 sm:gap-2.5 text-center text-[10px] sm:text-[11px] font-bold text-slate-450 dark:text-slate-500 uppercase tracking-wider mb-2 select-none">
               <div>Thứ 2</div>
@@ -889,10 +790,10 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                     transition={{ duration: 1.5, ease: "easeInOut" }}
                     onClick={() => {
                       setDate(cell.dateStr);
-                      setFeedback(null);
+                      
                       setIsDrawerOpen(true);
                     }}
-                    className={`min-h-[85px] sm:min-h-[110px] p-1 sm:p-2.5 border rounded-2xl flex flex-col justify-between transition-all duration-200 hover:-translate-y-1 hover:shadow-[4px_4px_0px_0px_#6366f1] dark:hover:shadow-[4px_4px_0px_0px_#4f46e5] hover:border-indigo-500/50 dark:hover:border-indigo-400/50 cursor-pointer relative active:translate-y-0 active:shadow-none ${bgClass}`}
+                    className={`min-h-[85px] sm:min-h-[110px] p-1 sm:p-2.5 border rounded-2xl flex flex-col justify-between transition-all duration-200 hover:-translate-y-1 hover:shadow-[4px_4px_0px_0px_#6366f1] dark:hover:shadow-[4px_4px_0px_0px_#4f46e5] hover:border-indigo-500/50 dark:hover:border-indigo-400/50 cursor-pointer relative active:translate-y-0 active:shadow-none group ${bgClass}`}
                   >
                     {/* Header of cell: Day number & Holiday info */}
                     <div className="flex justify-between items-start">
@@ -928,6 +829,8 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                                   exceptions.push({ name: emp.name, status: 'Vắng', hasOt: false });
                                 } else if (detail.status === 'Nghỉ phép') {
                                   exceptions.push({ name: emp.name, status: 'Phép', hasOt: false });
+                                } else if (detail.status === 'Nghỉ lễ') {
+                                  exceptions.push({ name: emp.name, status: 'Nghỉ lễ', hasOt: false });
                                 } else if (detail.hasOt) {
                                   exceptions.push({ name: emp.name, status: 'OT', hasOt: true });
                                 }
@@ -936,16 +839,44 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                           });
 
                           if (exceptions.length > 0) {
+                            // Tối ưu UI: Nếu tất cả nhân viên đều có cùng 1 trạng thái ngoại lệ (Nghỉ lễ, Vắng, Phép)
+                            if (exceptions.length === employees.length) {
+                              const firstStatus = exceptions[0].status;
+                              const isAllSame = exceptions.every(ex => ex.status === firstStatus);
+                              
+                              if (isAllSame) {
+                                if (firstStatus === 'Nghỉ lễ') {
+                                  return <div className="text-[9px] text-sky-500 font-semibold text-center py-0.5 bg-sky-500/10 rounded-lg border border-sky-500/20">Cả phòng nghỉ lễ</div>;
+                                } else if (firstStatus === 'Vắng') {
+                                  return <div className="text-[9px] text-rose-500 font-semibold text-center py-0.5 bg-rose-500/10 rounded-lg border border-rose-500/20">Cả phòng vắng</div>;
+                                } else if (firstStatus === 'Phép') {
+                                  return <div className="text-[9px] text-amber-500 font-semibold text-center py-0.5 bg-amber-500/10 rounded-lg border border-amber-500/20">Cả phòng nghỉ phép</div>;
+                                }
+                              }
+                            }
+
                             return (
                               <div className="flex flex-col gap-0.5 max-h-[80px] overflow-y-auto scrollbar-thin">
                                 {exceptions.map((ex, exIdx) => {
                                   let color = 'bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-450';
                                   if (ex.status === 'Phép') color = 'bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400';
+                                  if (ex.status === 'Nghỉ lễ') color = 'bg-sky-50 dark:bg-sky-950/30 text-sky-700 dark:text-sky-400';
                                   if (ex.status === 'OT' || ex.status === 'Làm CN' || ex.status === 'Làm Lễ') color = 'bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-400 border border-indigo-100/30';
 
                                   return (
-                                    <div key={exIdx} className={`text-[9px] leading-tight font-sans font-bold px-1.5 py-0.5 rounded truncate ${color}`}>
-                                      {ex.name.split(' ').pop()}: {ex.status}
+                                    <div key={exIdx} className={`text-[9px] leading-tight font-sans font-bold px-1.5 py-0.5 rounded truncate transition-colors duration-300 ${color}`}>
+                                      <AnimatePresence mode="wait">
+                                        <motion.span
+                                          key={ex.status}
+                                          initial={{ opacity: 0 }}
+                                          animate={{ opacity: 1 }}
+                                          exit={{ opacity: 0 }}
+                                          transition={{ duration: 0.2 }}
+                                          className="inline-block"
+                                        >
+                                          {ex.name.split(' ').pop()}: {ex.status}
+                                        </motion.span>
+                                      </AnimatePresence>
                                     </div>
                                   );
                                 })}
@@ -990,9 +921,9 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                               label = 'Vắng mặt';
                               color = 'bg-rose-500 text-white border-rose-600/10';
                             }
-                          } else if (detail.status === 'Ngày lễ') {
-                            label = 'Ngày lễ';
-                            color = 'bg-pink-500 text-white border-pink-600/10';
+                          } else if (detail.status === 'Ngày lễ' || detail.status === 'Nghỉ lễ') {
+                            label = 'Nghỉ lễ';
+                            color = 'bg-sky-500 text-white border-sky-600/10';
                           } else if (detail.status === 'Nghỉ cuối tuần') {
                             label = 'Nghỉ CN';
                             color = 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-450 border-slate-200/50 dark:border-slate-750';
@@ -1000,8 +931,19 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
 
                           return (
                             <div className="space-y-1">
-                              <div className={`text-[9px] font-extrabold text-center py-1 rounded-lg border shadow-sm ${color}`}>
-                                {label}
+                              <div className={`text-[9px] font-extrabold text-center py-1 rounded-lg border shadow-sm transition-colors duration-300 ${color}`}>
+                                <AnimatePresence mode="wait">
+                                  <motion.span
+                                    key={label}
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    transition={{ duration: 0.2 }}
+                                    className="inline-block"
+                                  >
+                                    {label}
+                                  </motion.span>
+                                </AnimatePresence>
                               </div>
                               {detail.hasOt && (
                                 <div className="text-[8px] font-sans font-bold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 border border-indigo-100/40 text-center py-0.5 rounded truncate">
@@ -1018,6 +960,82 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                         })()
                       )}
                     </div>
+                    
+                    {/* Tooltip for detailed info on hover */}
+                    {cell.isCurrentMonth && (
+                      <div className="absolute z-50 left-1/2 -translate-x-1/2 bottom-[100%] pb-3 hidden group-hover:flex flex-col w-[200px] pointer-events-none transform origin-bottom animate-in fade-in zoom-in-95 duration-200">
+                        <div className="bg-slate-900 dark:bg-slate-800 backdrop-blur-xl text-slate-100 shadow-2xl rounded-[16px] p-3.5 border border-slate-700/60 relative">
+                          <div className="text-[10px] font-bold text-slate-400 mb-3 border-b border-slate-700/60 pb-2 flex justify-between items-center uppercase tracking-wider">
+                            <span>{cell.dateStr}</span>
+                            {holidayName && <span className="text-pink-400 truncate max-w-[70px]" title={holidayName}>Lễ</span>}
+                          </div>
+                          <div className="flex flex-col gap-3 max-h-[180px] overflow-y-auto overscroll-contain pr-1.5 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-600/80 [&::-webkit-scrollbar-thumb]:rounded-full">
+                            {(() => {
+                              const allStatuses = employees.map(emp => {
+                                const st = getEmployeeStatusOnDate(emp.name, cell.dateStr, cell.dayOfWeek);
+                                let color = 'text-slate-400';
+                                let dotColor = 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.4)]';
+                                let shortLabel = 'Vắng';
+                                
+                                if (st.status === 'Có đi làm') {
+                                  color = 'text-emerald-400';
+                                  dotColor = 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]';
+                                  shortLabel = st.hasOt ? 'OT' : 'Làm';
+                                } else if (st.status === 'Nghỉ phép') {
+                                  color = 'text-amber-400';
+                                  dotColor = 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.4)]';
+                                  shortLabel = 'Phép';
+                                } else if (st.status === 'Ngày lễ' || st.status === 'Nghỉ lễ' || (holidayName && st.status === 'Không đi làm')) {
+                                  color = 'text-sky-400';
+                                  dotColor = 'bg-sky-500 shadow-[0_0_8px_rgba(14,165,233,0.4)]';
+                                  shortLabel = 'Lễ';
+                                } else if ((isSun && st.status === 'Không đi làm') || st.status === 'Nghỉ cuối tuần') {
+                                  color = 'text-slate-500';
+                                  dotColor = 'bg-slate-600 shadow-[0_0_8px_rgba(71,85,105,0.4)]';
+                                  shortLabel = 'Nghỉ';
+                                }
+                                return { name: emp.name, shortName: emp.name.split(' ').pop(), shortLabel, color, dotColor, note: st.note };
+                              });
+
+                              const isAllSame = allStatuses.length > 0 && allStatuses.every(s => s.shortLabel === allStatuses[0].shortLabel);
+
+                              if (isAllSame) {
+                                const first = allStatuses[0];
+                                let labelFull = first.shortLabel;
+                                if (first.shortLabel === 'Lễ') labelFull = 'Nghỉ Lễ';
+                                else if (first.shortLabel === 'Vắng') labelFull = 'Vắng Mặt';
+                                else if (first.shortLabel === 'Phép') labelFull = 'Nghỉ Phép';
+                                
+                                return (
+                                  <div className="flex justify-between items-center text-[11px] leading-none py-1">
+                                    <div className="flex items-center gap-2.5 truncate">
+                                      <span className={`w-1.5 h-1.5 rounded-full ${first.dotColor}`}></span>
+                                      <span className="truncate max-w-[120px] font-semibold text-slate-200">Cả phòng</span>
+                                    </div>
+                                    <span className={`font-bold tracking-wide ${first.color}`}>
+                                      {labelFull}
+                                    </span>
+                                  </div>
+                                );
+                              }
+
+                              return allStatuses.map(item => (
+                                <div key={item.name} className="flex justify-between items-center text-[11px] leading-none">
+                                  <div className="flex items-center gap-2.5 truncate">
+                                    <span className={`w-1.5 h-1.5 rounded-full ${item.dotColor}`}></span>
+                                    <span className="truncate max-w-[100px] font-semibold text-slate-200">{item.shortName}</span>
+                                  </div>
+                                  <span className={`font-bold tracking-wide ${item.color}`}>
+                                    {item.shortLabel}
+                                  </span>
+                                </div>
+                              ));
+                            })()}
+                          </div>
+                          <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-slate-900 dark:bg-slate-800 rotate-45 border-b border-r border-slate-700/60"></div>
+                        </div>
+                      </div>
+                    )}
                   </motion.div>
                 );
               })}
@@ -1028,6 +1046,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
               <div className="flex flex-wrap gap-4 items-center justify-center border-t border-slate-100 dark:border-slate-800/80 pt-4 mt-4 text-[10px] font-bold text-slate-450 uppercase">
                 <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 bg-emerald-500 rounded-full inline-block"></span> Có đi làm</span>
                 <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 bg-amber-500 rounded-full inline-block"></span> Nghỉ phép</span>
+                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 bg-sky-500 rounded-full inline-block"></span> Nghỉ lễ</span>
                 <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 bg-rose-500 rounded-full inline-block"></span> Vắng mặt</span>
                 <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 bg-pink-500 rounded-full inline-block"></span> Ngày lễ</span>
                 <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 bg-slate-200 dark:bg-slate-800 rounded-full inline-block"></span> Nghỉ Chủ Nhật</span>
@@ -1164,9 +1183,9 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                                 className="p-4 bg-slate-50/40 dark:bg-slate-950/30 rounded-2xl border border-slate-100 dark:border-slate-800/50 flex flex-col lg:flex-row lg:items-center justify-between gap-4 transition-all hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-200/80 dark:hover:border-slate-800"
                               >
                                 {/* Left & Center-Left: Grouped together to keep them close and compact */}
-                                <div className="flex flex-col sm:flex-row sm:items-center gap-4 lg:gap-6 min-w-0 flex-1">
+                                <div className="flex flex-col xl:flex-row xl:items-center gap-4 lg:gap-6 min-w-0 flex-1">
                                   {/* Profile Details */}
-                                  <div className="flex items-center gap-3 w-full sm:w-[220px] shrink-0">
+                                  <div className="flex items-center gap-3 w-full lg:w-[160px] xl:w-[200px] shrink-0">
                                     <div className="w-9 h-9 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 rounded-xl font-extrabold text-[11px] flex items-center justify-center border border-indigo-100/30 dark:border-indigo-900/10 shrink-0">
                                       {emp.name.split(' ').pop()?.substring(0, 2).toUpperCase() || 'NV'}
                                     </div>
@@ -1176,12 +1195,13 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                                     </div>
                                   </div>
 
-                                  {/* 3-State Status Toggle (Right next to details!) */}
-                                  <div className="flex bg-white dark:bg-slate-900 p-0.5 rounded-xl border border-slate-200/60 dark:border-slate-800/80 shadow-sm text-[10px] font-bold self-start sm:self-auto shrink-0">
+                                  {/* 4-State Status Toggle (Right next to details!) */}
+                                  <div className="grid grid-cols-2 md:flex bg-white dark:bg-slate-900 p-0.5 rounded-xl border border-slate-200/60 dark:border-slate-800/80 shadow-sm text-[10px] font-bold self-start sm:self-auto shrink-0 w-full md:w-auto">
                                     {[
                                       { label: 'Có đi làm', value: 'Có đi làm' as const, activeClass: 'bg-emerald-500 text-white dark:bg-emerald-600 shadow-sm' },
                                       { label: 'Vắng mặt', value: 'Không đi làm' as const, activeClass: 'bg-rose-500 text-white dark:bg-rose-600 shadow-sm' },
-                                      { label: 'Nghỉ phép', value: 'Nghỉ phép' as const, activeClass: 'bg-amber-500 text-white dark:bg-amber-600 shadow-sm' }
+                                      { label: 'Nghỉ phép', value: 'Nghỉ phép' as const, activeClass: 'bg-amber-500 text-white dark:bg-amber-600 shadow-sm' },
+                                      { label: 'Nghỉ lễ', value: 'Nghỉ lễ' as const, activeClass: 'bg-sky-500 text-white dark:bg-sky-600 shadow-sm' }
                                     ].map(opt => {
                                       const isActive = empStatus === opt.value;
                                       return (
@@ -1205,7 +1225,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                                 </div>
 
                                 {/* Right: OT and Notes Inputs side-by-side */}
-                                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 text-[10px] w-full lg:w-[48%] xl:w-[45%] shrink-0">
+                                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 text-[10px] w-full lg:flex-1 xl:max-w-[45%] shrink-0">
                                   {/* OT Checkbox and time ranges */}
                                   <div className="flex items-center gap-2.5 shrink-0 bg-white dark:bg-slate-900 px-3 py-1 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm h-11 w-full sm:w-auto">
                                     <label className="flex items-center gap-2 cursor-pointer font-extrabold text-[11px] text-slate-700 dark:text-slate-200 select-none">
@@ -1294,15 +1314,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                       </div>
 
                       {/* Feedbacks if any */}
-                      {feedback && (
-                        <div className={`p-3.5 rounded-2xl border text-xs font-semibold ${
-                          feedback.type === 'success'
-                            ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-100 dark:border-emerald-800/40 text-emerald-800 dark:text-emerald-300'
-                            : 'bg-rose-50 dark:bg-rose-950/40 border-rose-100 dark:border-rose-800/40 text-rose-800 dark:text-rose-300'
-                        }`}>
-                          {feedback.message}
-                        </div>
-                      )}
+                      
 
                       {/* Modal Footer Controls */}
                       <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4 pt-4 border-t border-slate-100 dark:border-slate-800/80">
@@ -1322,10 +1334,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                               setCompanyStatuses(resetStatuses);
                               setCompanyHasOt(resetHasOt);
                               setCompanyNotes(resetNotes);
-                              setFeedback({
-                                type: 'success',
-                                message: 'Đã đặt trạng thái "Có đi làm" cho toàn phòng. Bấm "Lưu Chấm Công Cả Ngày" để hoàn tất!'
-                              });
+                              onShowToast?.('Đã đặt trạng thái "Có đi làm" cho toàn phòng. Bấm "Lưu Chấm Công Cả Phòng" để hoàn tất!', 'success');
                              }}
                             className="flex-1 sm:flex-initial px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950/20 dark:hover:bg-emerald-900/30 dark:text-emerald-400 rounded-xl text-xs font-bold border border-emerald-200/50 dark:border-emerald-900/20 transition-all active:scale-[0.98] cursor-pointer flex items-center justify-center gap-1.5"
                           >
@@ -1345,14 +1354,31 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                               setCompanyStatuses(resetStatuses);
                               setCompanyHasOt(resetHasOt);
                               setCompanyNotes(resetNotes);
-                              setFeedback({
-                                type: 'success',
-                                message: 'Đã đặt trạng thái "Vắng mặt" cho toàn phòng. Bấm "Lưu Chấm Công Cả Ngày" để hoàn tất!'
-                              });
+                              onShowToast?.('Đã đặt trạng thái "Vắng mặt" cho toàn phòng. Bấm "Lưu Chấm Công Cả Phòng" để hoàn tất!', 'success');
                              }}
                             className="flex-1 sm:flex-initial px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/20 dark:hover:bg-rose-900/30 dark:text-rose-400 rounded-xl text-xs font-bold border border-rose-200/50 dark:border-rose-900/20 transition-all active:scale-[0.98] cursor-pointer flex items-center justify-center gap-1.5"
                           >
                             <span>🔴 Vắng cả phòng</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const resetStatuses: typeof companyStatuses = {};
+                              const resetHasOt: typeof companyHasOt = {};
+                              const resetNotes: typeof companyNotes = {};
+                              employees.forEach(emp => {
+                                resetStatuses[emp.name] = 'Nghỉ lễ';
+                                resetHasOt[emp.name] = false;
+                                resetNotes[emp.name] = '';
+                              });
+                              setCompanyStatuses(resetStatuses);
+                              setCompanyHasOt(resetHasOt);
+                              setCompanyNotes(resetNotes);
+                              onShowToast?.('Đã đặt trạng thái "Nghỉ lễ" cho toàn phòng. Bấm "Lưu Chấm Công Cả Phòng" để hoàn tất!', 'success');
+                             }}
+                            className="flex-1 sm:flex-initial px-4 py-2.5 bg-sky-50 hover:bg-sky-100 text-sky-700 dark:bg-sky-950/20 dark:hover:bg-sky-900/30 dark:text-sky-400 rounded-xl text-xs font-bold border border-sky-200/50 dark:border-sky-900/20 transition-all active:scale-[0.98] cursor-pointer flex items-center justify-center gap-1.5"
+                          >
+                            <span>🔵 Nghỉ lễ cả phòng</span>
                           </button>
                         </div>
 
@@ -1365,13 +1391,16 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                           >
                             Hủy bỏ
                           </button>
-                          <button
+                          <motion.button
                             type="submit"
                             disabled={isBatchSubmitting}
-                            className="px-8 py-2.5 bg-indigo-600 hover:bg-indigo-500 dark:bg-indigo-500 dark:hover:bg-indigo-400 text-white rounded-full text-xs font-extrabold shadow-md hover:shadow-lg transition-all active:scale-[0.98] disabled:opacity-50 active:scale-[0.98] cursor-pointer"
+                            whileHover={{ scale: 1.03 }}
+                            whileTap={{ scale: 0.95 }}
+                            transition={{ type: 'spring', stiffness: 400, damping: 10 }}
+                            className="px-8 py-2.5 bg-indigo-600 hover:bg-indigo-500 dark:bg-indigo-500 dark:hover:bg-indigo-400 text-white rounded-full text-xs font-extrabold shadow-md hover:shadow-lg transition-colors disabled:opacity-50 cursor-pointer"
                           >
-                            {isBatchSubmitting ? "Đang lưu..." : "Lưu Chấm Công Cả Ngày"}
-                          </button>
+                            {isBatchSubmitting ? "Đang lưu..." : "Lưu Chấm Công Cả Phòng"}
+                          </motion.button>
                         </div>
                       </div>
                     </form>
@@ -1431,11 +1460,12 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                     {/* Status Select */}
                     <div>
                       <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">Trạng thái chấm công</label>
-                      <div className="grid grid-cols-3 gap-2">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                         {[
                           { value: 'Có đi làm' as const, label: 'Có đi làm', color: 'peer-checked:bg-emerald-500 dark:peer-checked:bg-emerald-600 peer-checked:text-white hover:bg-emerald-50 dark:hover:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border-emerald-100 dark:border-emerald-800/40' },
                           { value: 'Không đi làm' as const, label: 'Vắng mặt', color: 'peer-checked:bg-rose-500 dark:peer-checked:bg-rose-600 peer-checked:text-white hover:bg-rose-50 dark:hover:bg-rose-950/20 text-rose-700 dark:text-rose-450 border-rose-100 dark:border-rose-800/40' },
-                          { value: 'Nghỉ phép' as const, label: 'Nghỉ phép', color: 'peer-checked:bg-amber-500 dark:peer-checked:bg-amber-600 peer-checked:text-white hover:bg-amber-50 dark:hover:bg-amber-950/20 text-amber-700 dark:text-amber-400 border-amber-100 dark:border-amber-800/40' }
+                          { value: 'Nghỉ phép' as const, label: 'Nghỉ phép', color: 'peer-checked:bg-amber-500 dark:peer-checked:bg-amber-600 peer-checked:text-white hover:bg-amber-50 dark:hover:bg-amber-950/20 text-amber-700 dark:text-amber-400 border-amber-100 dark:border-amber-800/40' },
+                          { value: 'Nghỉ lễ' as const, label: 'Nghỉ lễ', color: 'peer-checked:bg-sky-500 dark:peer-checked:bg-sky-600 peer-checked:text-white hover:bg-sky-50 dark:hover:bg-sky-950/20 text-sky-700 dark:text-sky-400 border-sky-100 dark:border-sky-800/40' }
                         ].map((item) => (
                           <label key={item.value} className="relative cursor-pointer select-none">
                             <input
@@ -2110,7 +2140,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                     key={emp.name}
                     onClick={() => {
                       setSelectedEmpName(emp.name);
-                      setFeedback(null);
+                      
                     }}
                     className={`w-full text-left p-3 flex items-center gap-3 transition-all active:scale-[0.98] rounded-xl cursor-pointer ${
                       selectedEmpName === emp.name
@@ -2211,7 +2241,8 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                       {[
                         { value: 'Có đi làm', color: 'peer-checked:bg-emerald-500 dark:peer-checked:bg-emerald-600 peer-checked:text-white hover:bg-emerald-50 dark:hover:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border-emerald-100 dark:border-emerald-800/40' },
                         { value: 'Không đi làm', color: 'peer-checked:bg-rose-500 dark:peer-checked:bg-rose-600 peer-checked:text-white hover:bg-rose-50 dark:hover:bg-rose-950/20 text-rose-700 dark:text-rose-400 border-rose-100 dark:border-rose-800/40' },
-                        { value: 'Nghỉ phép', color: 'peer-checked:bg-amber-500 dark:peer-checked:bg-amber-600 peer-checked:text-white hover:bg-amber-50 dark:hover:bg-amber-950/20 text-amber-700 dark:text-amber-400 border-amber-100 dark:border-amber-800/40' }
+                        { value: 'Nghỉ phép', color: 'peer-checked:bg-amber-500 dark:peer-checked:bg-amber-600 peer-checked:text-white hover:bg-amber-50 dark:hover:bg-amber-950/20 text-amber-700 dark:text-amber-400 border-amber-100 dark:border-amber-800/40' },
+                        { value: 'Nghỉ lễ', color: 'peer-checked:bg-sky-500 dark:peer-checked:bg-sky-600 peer-checked:text-white hover:bg-sky-50 dark:hover:bg-sky-950/20 text-sky-700 dark:text-sky-400 border-sky-100 dark:border-sky-800/40' }
                       ].map((item) => (
                         <label key={item.value} className="relative cursor-pointer">
                           <input
@@ -2290,18 +2321,7 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                   </div>
 
                   {/* Submission Result Feedback */}
-                  {feedback && (
-                    <div className={`p-4 rounded-2xl border text-xs ${
-                      feedback.type === 'success' 
-                        ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-100 dark:border-emerald-800/40 text-emerald-800 dark:text-emerald-300'
-                        : 'bg-rose-50 dark:bg-rose-950/40 border-rose-100 dark:border-rose-800/40 text-rose-800 dark:text-rose-300'
-                    }`}>
-                      <div className="flex items-center gap-2">
-                        <CheckCircle2 className="w-4.5 h-4.5 text-emerald-500 dark:text-emerald-400" />
-                        <span className="font-semibold">{feedback.message}</span>
-                      </div>
-                    </div>
-                  )}
+                  
 
                   {/* Submit Buttons */}
                   <div className="flex justify-end gap-3 pt-2">
@@ -2316,13 +2336,16 @@ export default function AttendanceTab({ accessToken, employees, timeLogs = [], o
                         Xóa Ghi Nhận
                       </button>
                     )}
-                    <button
+                    <motion.button
                       type="submit"
                       disabled={isSubmitting}
-                      className="px-7 py-3 bg-indigo-600 hover:bg-indigo-500 dark:bg-indigo-500 dark:hover:bg-indigo-400 text-white rounded-full text-sm font-bold shadow-md shadow-indigo-155 dark:shadow-none transition-all disabled:opacity-50 active:scale-[0.98] cursor-pointer"
+                      whileHover={{ scale: 1.03 }}
+                      whileTap={{ scale: 0.95 }}
+                      transition={{ type: 'spring', stiffness: 400, damping: 10 }}
+                      className="px-7 py-3 bg-indigo-600 hover:bg-indigo-500 dark:bg-indigo-500 dark:hover:bg-indigo-400 text-white rounded-full text-sm font-bold shadow-md shadow-indigo-155 dark:shadow-none transition-colors disabled:opacity-50 cursor-pointer"
                     >
                       {isSubmitting ? "Đang lưu trữ..." : "Lưu Nhật Ký Công"}
-                    </button>
+                    </motion.button>
                   </div>
                 </form>
               )}

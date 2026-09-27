@@ -1,45 +1,108 @@
-import React, { useState, useMemo } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { Employee } from '../types';
-import { addEmployee, deleteEmployee, updateEmployee, saveEmployeesOrder, deleteAllData } from '../sheets';
-import { Search, User, Briefcase, UserPlus, Calendar, Trash2, Edit2, ChevronUp, ChevronDown, LayoutGrid, List, X, Sliders, Settings, Check } from 'lucide-react';
-import DatePicker from './DatePicker';
-import { playConfirmSound, playTabSound } from '../sound';
-import { RandomLoader } from './RandomLoader';
-import { getDisplayNameFromList, getExportName, saveStoredExportName, getStoredExportNames } from '../utils/nameUtils';
+import React, { useState, useMemo } from "react";
+import { motion, AnimatePresence } from "motion/react";
+import { Employee, TimeLog } from "../types";
+import {
+  addEmployee,
+  deleteEmployee,
+  updateEmployee,
+  saveEmployeesOrder,
+  deleteAllData,
+  bulkUpdateEmployees,
+  bulkDeleteEmployees,
+} from "../sheets";
+import {
+  Search,
+  User,
+  Briefcase,
+  UserPlus,
+  Calendar,
+  Trash2,
+  Edit2,
+  ChevronUp,
+  ChevronDown,
+  LayoutGrid,
+  List,
+  X,
+  Sliders,
+  Settings,
+  Check,
+} from "lucide-react";
+import DatePicker from "./DatePicker";
+import { playConfirmSound, playTabSound } from "../sound";
+import { RandomLoader } from "./RandomLoader";
+import {
+  getDisplayNameFromList,
+  getExportName,
+  saveStoredExportName,
+  getStoredExportNames,
+} from "../utils/nameUtils";
+import { recalculateAnnualLeave } from "../utils/leaveUtils";
 
 interface EmployeesTabProps {
   accessToken: string;
   employees: Employee[];
+  timeLogs?: TimeLog[];
   onEmployeeAdded: () => void;
   isLoading?: boolean;
+  onShowToast?: (
+    message: string,
+    type: "success" | "error" | "warning" | "info",
+  ) => void;
 }
 
-function SkeletonEmployeesList({ viewMode }: { viewMode: 'grid' | 'table' }) {
-  if (viewMode === 'table') {
+function SkeletonEmployeesList({ viewMode }: { viewMode: "grid" | "table" }) {
+  if (viewMode === "table") {
     return (
       <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-[28px] overflow-hidden shadow-sm transition-colors duration-300">
-        <div onTouchStart={(e) => e.stopPropagation()} onTouchMove={(e) => e.stopPropagation()} onTouchEnd={(e) => e.stopPropagation()} className="overflow-x-auto">
+        <div
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchMove={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
+          className="overflow-x-auto"
+        >
           <table className="no-swipe w-full min-w-[800px] md:min-w-0 text-left border-collapse">
             <thead>
               <tr className="no-swipe bg-slate-50/80 dark:bg-slate-950/80 border-b border-slate-100 dark:border-slate-800/80 text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                <th className="py-4 px-4 whitespace-nowrap text-center w-12">STT</th>
-                <th className="py-4 px-4 whitespace-nowrap">Họ & Tên Nhân Viên</th>
+                          <th className="p-4 w-10 text-center">
+                            <input
+                              type="checkbox"
+                              disabled checked={false}
+                              className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-900 cursor-pointer"
+                            />
+                          </th>
+                          <th className="py-4 px-4 whitespace-nowrap text-center w-12">
+                  STT
+                </th>
+                <th className="py-4 px-4 whitespace-nowrap">
+                  Họ & Tên Nhân Viên
+                </th>
                 <th className="py-4 px-4 whitespace-nowrap">Chức Vụ</th>
                 <th className="py-4 px-4 whitespace-nowrap">Bộ Phận</th>
                 <th className="py-4 px-4 whitespace-nowrap">Ngày Vào Làm</th>
-                <th className="py-4 px-4 whitespace-nowrap text-center">Điều Chỉnh Phép</th>
+                <th className="py-4 px-4 whitespace-nowrap text-center">
+                  Phép Còn Lại
+                </th>
+                <th className="py-4 px-4 whitespace-nowrap text-center">
+                  Điều Chỉnh Phép
+                </th>
                 <th className="py-4 px-4 whitespace-nowrap">Sinh Nhật 🔒</th>
-                <th className="py-4 px-4 whitespace-nowrap text-right pr-6">Thao Tác</th>
+                <th className="py-4 px-4 whitespace-nowrap text-right pr-6">
+                  Thao Tác
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-xs">
               {Array.from({ length: 6 }).map((_, idx) => (
-                <motion.tr 
-                  key={idx} 
+                <motion.tr
+                  key={idx}
                   initial={{ opacity: 0.4 }}
                   animate={{ opacity: [0.4, 0.85, 0.4] }}
-                  transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut", delay: idx * 0.1 }}
+                  transition={{
+                    duration: 1.5,
+                    repeat: Infinity,
+                    ease: "easeInOut",
+                    delay: idx * 0.1,
+                  }}
                 >
                   <td className="py-3.5 px-4 text-center font-mono font-bold text-slate-300 dark:text-slate-700">
                     {idx + 1}
@@ -55,6 +118,9 @@ function SkeletonEmployeesList({ viewMode }: { viewMode: 'grid' | 'table' }) {
                   </td>
                   <td className="py-3.5 px-4">
                     <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded-md w-20" />
+                  </td>
+                  <td className="py-3.5 px-4 text-center">
+                    <div className="h-5 bg-slate-200 dark:bg-slate-800 rounded-lg w-16 mx-auto" />
                   </td>
                   <td className="py-3.5 px-4 text-center">
                     <div className="h-5 bg-slate-200 dark:bg-slate-800 rounded-lg w-16 mx-auto" />
@@ -81,7 +147,12 @@ function SkeletonEmployeesList({ viewMode }: { viewMode: 'grid' | 'table' }) {
           key={idx}
           initial={{ opacity: 0.4 }}
           animate={{ opacity: [0.4, 0.85, 0.4] }}
-          transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut", delay: idx * 0.1 }}
+          transition={{
+            duration: 1.5,
+            repeat: Infinity,
+            ease: "easeInOut",
+            delay: idx * 0.1,
+          }}
           className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-[24px] sm:rounded-[28px] p-4 sm:p-5 shadow-sm space-y-4 relative overflow-hidden flex flex-col items-center text-center"
         >
           <div className="w-16 h-16 rounded-full bg-slate-200 dark:bg-slate-800 shrink-0" />
@@ -93,22 +164,27 @@ function SkeletonEmployeesList({ viewMode }: { viewMode: 'grid' | 'table' }) {
           </div>
         </motion.div>
       ))}
-
     </div>
   );
 }
 
-
 const getInitialCarryover = (name: string): number => {
   const nameLower = name.toLowerCase();
-  if (nameLower.includes('vũ') || nameLower.includes('vu')) return 12;
-  if (nameLower.includes('dũng') || nameLower.includes('dung')) return 10;
-  if (nameLower.includes('hảo') || nameLower.includes('hao')) return 6;
+  if (nameLower.includes("vũ") || nameLower.includes("vu")) return 12;
+  if (nameLower.includes("dũng") || nameLower.includes("dung")) return 10;
+  if (nameLower.includes("hảo") || nameLower.includes("hao")) return 6;
   return 0;
 };
 
-export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, isLoading }: EmployeesTabProps) {
-  const [searchTerm, setSearchTerm] = useState<string>('');
+export default function EmployeesTab({
+  accessToken,
+  employees,
+  timeLogs = [],
+  onEmployeeAdded,
+  isLoading,
+  onShowToast,
+}: EmployeesTabProps) {
+  const [searchTerm, setSearchTerm] = useState<string>("");
   const [showAddForm, setShowAddForm] = useState<boolean>(false);
   const [isDeletingAll, setIsDeletingAll] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -118,39 +194,44 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+  const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
+
+  const [selectedEmpNames, setSelectedEmpNames] = useState<string[]>([]);
+  const [isBulkUpdating, setIsBulkUpdating] = useState(false);
+  const [bulkActionDept, setBulkActionDept] = useState<string>("");
+
 
   const [departments, setDepartments] = useState<string[]>(() => {
     try {
-      const saved = localStorage.getItem('company_departments');
+      const saved = localStorage.getItem("company_departments");
       if (saved) return JSON.parse(saved);
     } catch {}
-    return ['Văn phòng', 'Kỹ thuật', 'Marketing', 'Kế toán', 'Nhân sự'];
+    return ["Văn phòng", "Kỹ thuật", "Marketing", "Kế toán", "Nhân sự"];
   });
-
-
 
   const saveDepartments = (depts: string[]) => {
     setDepartments(depts);
-    localStorage.setItem('company_departments', JSON.stringify(depts));
+    localStorage.setItem("company_departments", JSON.stringify(depts));
   };
 
   // Form states
-  const [empName, setEmpName] = useState<string>('');
-  const [empExportName, setEmpExportName] = useState<string>(''); // Tên xuất file / Tên hiển thị (e.g. Nhi)
-  const [empRole, setEmpRole] = useState<string>('Nhân viên');
-  const [empRegisteredAt, setEmpRegisteredAt] = useState<string>('01/01/2026'); // Default to 01/01/2026 to match user's core requirement
-  const [empLeftAt, setEmpLeftAt] = useState<string>(''); // Optional leaving date
-  const [empLeaveAllowance, setEmpLeaveAllowance] = useState<string>(''); // Optional custom annual leave allowance
-  const [empLeaveCarryover, setEmpLeaveCarryover] = useState<string>(''); // Optional custom carryover leave
-  const [empBirthday, setEmpBirthday] = useState<string>(''); // Private birthday
-  const [empDepartment, setEmpDepartment] = useState<string>('');
+  const [empName, setEmpName] = useState<string>("");
+  const [empExportName, setEmpExportName] = useState<string>(""); // Tên xuất file / Tên hiển thị (e.g. Nhi)
+  const [empRole, setEmpRole] = useState<string>("Nhân viên");
+  const [empRegisteredAt, setEmpRegisteredAt] = useState<string>("01/01/2026"); // Default to 01/01/2026 to match user's core requirement
+  const [empLeftAt, setEmpLeftAt] = useState<string>(""); // Optional leaving date
+  const [empLeaveAllowance, setEmpLeaveAllowance] = useState<string>(""); // Optional custom annual leave allowance
+  const [empLeaveCarryover, setEmpLeaveCarryover] = useState<string>(""); // Optional custom carryover leave
+  const [empBirthday, setEmpBirthday] = useState<string>(""); // Private birthday
+  const [empDepartment, setEmpDepartment] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   // Private birthdays dictionary (keyed by employee name, value is DD/MM/YYYY or similar)
-  const [privateBirthdays, setPrivateBirthdays] = useState<Record<string, string>>(() => {
+  const [privateBirthdays, setPrivateBirthdays] = useState<
+    Record<string, string>
+  >(() => {
     try {
-      return JSON.parse(localStorage.getItem('private_birthdays') || '{}');
+      return JSON.parse(localStorage.getItem("private_birthdays") || "{}");
     } catch {
       return {};
     }
@@ -164,20 +245,20 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
       updated[name] = date;
     }
     setPrivateBirthdays(updated);
-    localStorage.setItem('private_birthdays', JSON.stringify(updated));
+    localStorage.setItem("private_birthdays", JSON.stringify(updated));
   };
 
   // Sorting / Reordering state
   const [isReordering, setIsReordering] = useState<boolean>(false);
 
-  const handleMoveEmployee = async (name: string, direction: 'up' | 'down') => {
+  const handleMoveEmployee = async (name: string, direction: "up" | "down") => {
     if (isReordering) return;
-    
+
     // Find the current index of this employee in the original main array
-    const index = employees.findIndex(emp => emp.name === name);
+    const index = employees.findIndex((emp) => emp.name === name);
     if (index === -1) return;
 
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    const targetIndex = direction === "up" ? index - 1 : index + 1;
     if (targetIndex < 0 || targetIndex >= employees.length) return;
 
     // Swap the elements
@@ -192,7 +273,7 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
       onEmployeeAdded();
     } catch (err: any) {
       console.error(err);
-      alert("Lỗi khi sắp xếp lại nhân viên: " + err.message);
+      onShowToast?.("Lỗi khi sắp xếp lại nhân viên: " + err.message, "error");
     } finally {
       setIsReordering(false);
     }
@@ -207,31 +288,35 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
 
   // Edit states
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
-  const [editName, setEditName] = useState<string>('');
-  const [editExportName, setEditExportName] = useState<string>(''); // Tên xuất file / Tên hiển thị
-  const [editRole, setEditRole] = useState<string>('Nhân viên');
-  const [editRegisteredAt, setEditRegisteredAt] = useState<string>('01/01/2026');
-  const [editLeftAt, setEditLeftAt] = useState<string>('');
-  const [editLeaveAllowance, setEditLeaveAllowance] = useState<string>('');
-  const [editLeaveCarryover, setEditLeaveCarryover] = useState<string>('');
-  const [editBirthday, setEditBirthday] = useState<string>('');
-  const [editEmpDepartment, setEditEmpDepartment] = useState<string>('');
+  const [editName, setEditName] = useState<string>("");
+  const [editExportName, setEditExportName] = useState<string>(""); // Tên xuất file / Tên hiển thị
+  const [editRole, setEditRole] = useState<string>("Nhân viên");
+  const [editRegisteredAt, setEditRegisteredAt] =
+    useState<string>("01/01/2026");
+  const [editLeftAt, setEditLeftAt] = useState<string>("");
+  const [editLeaveAllowance, setEditLeaveAllowance] = useState<string>("");
+  const [editLeaveCarryover, setEditLeaveCarryover] = useState<string>("");
+  const [editBirthday, setEditBirthday] = useState<string>("");
+  const [editEmpDepartment, setEditEmpDepartment] = useState<string>("");
   const [isSavingEdit, setIsSavingEdit] = useState<boolean>(false);
 
   // Filtered list
-  const filteredEmployees = employees.filter(e =>
-    e.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    e.role.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (e.displayName && e.displayName.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (e.department && e.department.toLowerCase().includes(searchTerm.toLowerCase()))
+  const filteredEmployees = employees.filter(
+    (e) =>
+      e.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      e.role.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (e.displayName &&
+        e.displayName.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (e.department &&
+        e.department.toLowerCase().includes(searchTerm.toLowerCase())),
   );
 
   const groupedEmployees = useMemo(() => {
     const groups: { department: string; employees: Employee[] }[] = [];
     const deptMap = new Map<string, Employee[]>();
-    
-    filteredEmployees.forEach(emp => {
-      const dept = (emp.department || '').trim() || 'Chưa Phân Bổ';
+
+    filteredEmployees.forEach((emp) => {
+      const dept = (emp.department || "").trim() || "Chưa Phân Bổ";
       if (!deptMap.has(dept)) {
         deptMap.set(dept, []);
       }
@@ -243,8 +328,8 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
     });
 
     groups.sort((a, b) => {
-      if (a.department === 'Chưa Phân Bổ') return 1;
-      if (b.department === 'Chưa Phân Bổ') return -1;
+      if (a.department === "Chưa Phân Bổ") return 1;
+      if (b.department === "Chưa Phân Bổ") return -1;
       return a.department.localeCompare(b.department);
     });
 
@@ -252,37 +337,168 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
   }, [filteredEmployees]);
 
 
+  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked) {
+      setSelectedEmpNames(filteredEmployees.map(emp => emp.name));
+    } else {
+      setSelectedEmpNames([]);
+    }
+  };
+
+  const toggleSelectEmp = (name: string) => {
+    setSelectedEmpNames(prev => 
+      prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]
+    );
+  };
+
+  const handleBulkUpdateDepartment = async () => {
+    if (selectedEmpNames.length === 0) return;
+    if (!bulkActionDept) {
+      onShowToast?.("Vui lòng chọn một bộ phận để cập nhật.", "warning");
+      return;
+    }
+    
+    setIsBulkUpdating(true);
+    try {
+      const updates = employees
+        .filter(emp => selectedEmpNames.includes(emp.name))
+        .map(emp => ({
+          rowIndex: emp.rowIndex!,
+          oldName: emp.name,
+          newName: emp.name,
+          newRole: emp.role,
+          newRegisteredAt: emp.registeredAt,
+          newLeftAt: emp.leftAt || "",
+          newLeaveAllowance: emp.leaveAllowance,
+          newLeaveCarryover: emp.leaveCarryover,
+          newDisplayName: emp.displayName || "",
+          newDepartment: bulkActionDept === "CLEAR" ? "" : bulkActionDept,
+          newDateOfBirth: emp.dateOfBirth || ""
+        }));
+      
+      await bulkUpdateEmployees(accessToken, updates);
+      onShowToast?.(`Đã cập nhật bộ phận cho ${updates.length} nhân viên.`, "success");
+      setSelectedEmpNames([]);
+      setBulkActionDept("");
+      onEmployeeAdded();
+    } catch (err: any) {
+      console.error(err);
+      onShowToast?.("Lỗi cập nhật hàng loạt: " + err.message, "error");
+    } finally {
+      setIsBulkUpdating(true); // Wait for parent to refresh
+      setTimeout(() => setIsBulkUpdating(false), 2000);
+    }
+  };
+
+  const handleBulkUpdateStatus = async (status: 'active' | 'inactive') => {
+    if (selectedEmpNames.length === 0) return;
+    const confirmMsg = status === 'active' 
+      ? "Khôi phục trạng thái Đang làm việc cho các nhân sự đã chọn?"
+      : "Đánh dấu Đã nghỉ việc (từ ngày hôm nay) cho các nhân sự đã chọn?";
+    if (!window.confirm(confirmMsg)) return;
+    
+    setIsBulkUpdating(true);
+    try {
+      const today = new Date();
+      const leftAtValue = status === 'active' ? "" : `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`;
+      
+      const updates = employees
+        .filter(emp => selectedEmpNames.includes(emp.name))
+        .map(emp => ({
+          rowIndex: emp.rowIndex!,
+          oldName: emp.name,
+          newName: emp.name,
+          newRole: emp.role,
+          newRegisteredAt: emp.registeredAt,
+          newLeftAt: leftAtValue,
+          newLeaveAllowance: emp.leaveAllowance,
+          newLeaveCarryover: emp.leaveCarryover,
+          newDisplayName: emp.displayName || "",
+          newDepartment: emp.department || "",
+          newDateOfBirth: emp.dateOfBirth || ""
+        }));
+      
+      await bulkUpdateEmployees(accessToken, updates);
+      onShowToast?.(`Đã cập nhật trạng thái cho ${updates.length} nhân viên.`, "success");
+      setSelectedEmpNames([]);
+      onEmployeeAdded();
+    } catch (err: any) {
+      console.error(err);
+      onShowToast?.("Lỗi cập nhật hàng loạt: " + err.message, "error");
+    } finally {
+      setIsBulkUpdating(true);
+      setTimeout(() => setIsBulkUpdating(false), 2000);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedEmpNames.length === 0) return;
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa ${selectedEmpNames.length} nhân sự đã chọn không? LƯU Ý: Lịch sử chấm công của họ vẫn được giữ lại, nhưng họ sẽ không hiển thị trên hệ thống.`)) return;
+    
+    setIsBulkUpdating(true);
+    try {
+      const rowIndexes = employees
+        .filter(emp => selectedEmpNames.includes(emp.name) && emp.rowIndex !== undefined)
+        .map(emp => emp.rowIndex!);
+        
+      await bulkDeleteEmployees(accessToken, rowIndexes);
+      onShowToast?.(`Đã xóa ${rowIndexes.length} nhân viên.`, "success");
+      setSelectedEmpNames([]);
+      onEmployeeAdded();
+    } catch (err: any) {
+      console.error(err);
+      onShowToast?.("Lỗi xóa hàng loạt: " + err.message, "error");
+    } finally {
+      setIsBulkUpdating(true);
+      setTimeout(() => setIsBulkUpdating(false), 2000);
+    }
+  };
+
   const handleStartEdit = (emp: Employee) => {
     setEditingEmployee(emp);
     setEditName(emp.name);
-    setEditExportName(getExportName(emp.name));
+    setEditExportName(getExportName(emp.name, emp.displayName));
     setEditRole(emp.role);
-    
-    setEditRegisteredAt(emp.registeredAt || '01/01/2026');
-    setEditLeftAt(emp.leftAt || '');
-    setEditLeaveAllowance(emp.leaveAllowance !== undefined ? String(emp.leaveAllowance) : '');
-    setEditLeaveCarryover(emp.leaveCarryover !== undefined ? String(emp.leaveCarryover) : '');
-    setEditBirthday(privateBirthdays[emp.name] || '');
+
+    setEditRegisteredAt(emp.registeredAt || "01/01/2026");
+    setEditLeftAt(emp.leftAt || "");
+    setEditLeaveAllowance(
+      emp.leaveAllowance !== undefined ? String(emp.leaveAllowance) : "",
+    );
+    setEditLeaveCarryover(
+      emp.leaveCarryover !== undefined ? String(emp.leaveCarryover) : "",
+    );
+    setEditBirthday(emp.dateOfBirth || "");
   };
 
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingEmployee) return;
     if (!editName.trim() || !editRole || !editRegisteredAt) {
-      alert("Vui lòng nhập đầy đủ thông tin.");
+      onShowToast?.("Vui lòng nhập đầy đủ thông tin.", "error");
       return;
     }
 
     if (
-      editName.trim().toLowerCase() !== editingEmployee.name.trim().toLowerCase() &&
-      employees.some(emp => emp.name.trim().toLowerCase() === editName.trim().toLowerCase())
+      editName.trim().toLowerCase() !==
+        editingEmployee.name.trim().toLowerCase() &&
+      employees.some(
+        (emp) =>
+          emp.name.trim().toLowerCase() === editName.trim().toLowerCase(),
+      )
     ) {
-      alert("Nhân viên với tên mới này đã tồn tại trên hệ thống!");
+      onShowToast?.(
+        "Nhân viên với tên mới này đã tồn tại trên hệ thống!",
+        "error",
+      );
       return;
     }
 
     if (!editingEmployee.rowIndex) {
-      alert("Không thể chỉnh sửa nhân viên này do thiếu thông tin vị trí dòng (rowIndex).");
+      onShowToast?.(
+        "Không thể chỉnh sửa nhân viên này do thiếu thông tin vị trí dòng (rowIndex).",
+        "error",
+      );
       return;
     }
 
@@ -296,17 +512,25 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
         editRole,
         editRegisteredAt,
         editLeftAt,
-        editLeaveAllowance.trim() !== '' ? Number(editLeaveAllowance) : undefined,
-        editLeaveCarryover.trim() !== '' ? Number(editLeaveCarryover) : undefined,
-        editExportName.trim() !== '' ? editExportName.trim() : undefined,
-        undefined
+        editLeaveAllowance.trim() !== ""
+          ? Number(editLeaveAllowance)
+          : undefined,
+        editLeaveCarryover.trim() !== ""
+          ? Number(editLeaveCarryover)
+          : undefined,
+        editExportName.trim() !== "" ? editExportName.trim() : undefined,
+        editEmpDepartment.trim() !== "" ? editEmpDepartment.trim() : undefined,
+        editBirthday.trim() !== "" ? editBirthday.trim() : undefined,
       );
 
       // Save custom export name for PNG/PDF/Excel exports
       saveStoredExportName(editName.trim(), editExportName.trim());
 
       // Save department if it's new
-      if (editEmpDepartment.trim() && !departments.includes(editEmpDepartment.trim())) {
+      if (
+        editEmpDepartment.trim() &&
+        !departments.includes(editEmpDepartment.trim())
+      ) {
         saveDepartments([...departments, editEmpDepartment.trim()]);
       }
 
@@ -319,7 +543,7 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
           updated[editName.trim()] = bday;
         }
         setPrivateBirthdays(updated);
-        localStorage.setItem('private_birthdays', JSON.stringify(updated));
+        localStorage.setItem("private_birthdays", JSON.stringify(updated));
       } else {
         updatePrivateBirthday(editingEmployee.name, editBirthday);
       }
@@ -329,7 +553,7 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
       onEmployeeAdded();
     } catch (err: any) {
       console.error(err);
-      alert("Không thể cập nhật nhân viên: " + err.message);
+      onShowToast?.("Không thể cập nhật nhân viên: " + err.message, "error");
     } finally {
       setIsSavingEdit(false);
     }
@@ -338,12 +562,19 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!empName.trim() || !empRole || !empRegisteredAt) {
-      alert("Vui lòng nhập đầy đủ thông tin.");
+      onShowToast?.("Vui lòng nhập đầy đủ thông tin.", "error");
       return;
     }
 
-    if (employees.some(emp => emp.name.trim().toLowerCase() === empName.trim().toLowerCase())) {
-      alert("Nhân viên này đã tồn tại trên hệ thống Google Sheets!");
+    if (
+      employees.some(
+        (emp) => emp.name.trim().toLowerCase() === empName.trim().toLowerCase(),
+      )
+    ) {
+      onShowToast?.(
+        "Nhân viên này đã tồn tại trên hệ thống Google Sheets!",
+        "error",
+      );
       return;
     }
 
@@ -354,10 +585,17 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
         role: empRole,
         registeredAt: empRegisteredAt,
         leftAt: empLeftAt || undefined,
-        leaveAllowance: empLeaveAllowance.trim() !== '' ? Number(empLeaveAllowance) : undefined,
-        leaveCarryover: empLeaveCarryover.trim() !== '' ? Number(empLeaveCarryover) : undefined,
+        leaveAllowance:
+          empLeaveAllowance.trim() !== ""
+            ? Number(empLeaveAllowance.trim())
+            : undefined,
+        leaveCarryover:
+          empLeaveCarryover.trim() !== ""
+            ? Number(empLeaveCarryover.trim())
+            : undefined,
         displayName: empExportName.trim() || undefined,
-        department: empDepartment.trim() || undefined
+        department: empDepartment.trim() || undefined,
+        dateOfBirth: empBirthday.trim() || undefined,
       };
 
       await addEmployee(accessToken, newEmp);
@@ -366,7 +604,7 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
       if (empExportName.trim()) {
         saveStoredExportName(empName.trim(), empExportName.trim());
       }
-      
+
       // Save department if it's new
       if (empDepartment.trim() && !departments.includes(empDepartment.trim())) {
         saveDepartments([...departments, empDepartment.trim()]);
@@ -379,39 +617,46 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
 
       showToast("Đăng ký hồ sơ nhân viên thành công!");
       onEmployeeAdded();
-      setEmpName('');
-      setEmpExportName('');
-      setEmpLeftAt('');
-      setEmpLeaveAllowance('');
-      setEmpLeaveCarryover('');
-      setEmpBirthday('');
+      setEmpName("");
+      setEmpExportName("");
+      setEmpLeftAt("");
+      setEmpLeaveAllowance("");
+      setEmpLeaveCarryover("");
+      setEmpBirthday("");
       setShowAddForm(false);
     } catch (err: any) {
       console.error(err);
-      alert("Không thể thêm nhân viên mới: " + err.message);
+      onShowToast?.("Không thể thêm nhân viên mới: " + err.message, "error");
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleDeleteAll = async () => {
-    if (!window.confirm("CẢNH BÁO NGUY HIỂM: Bạn có chắc chắn muốn xóa TOÀN BỘ nhân viên và dữ liệu chấm công liên quan không?\n\nHành động này sẽ làm trống hệ thống để bắt đầu lại từ đầu và KHÔNG THỂ hoàn tác!")) {
+    if (
+      !window.confirm(
+        "CẢNH BÁO NGUY HIỂM: Bạn có chắc chắn muốn xóa TOÀN BỘ nhân viên và dữ liệu chấm công liên quan không?\n\nHành động này sẽ làm trống hệ thống để bắt đầu lại từ đầu và KHÔNG THỂ hoàn tác!",
+      )
+    ) {
       return;
     }
-    
+
     setIsDeletingAll(true);
     try {
       await deleteAllData(accessToken);
-      
+
       // Clear private birthdays
       setPrivateBirthdays({});
-      localStorage.removeItem('private_birthdays');
-      
-      alert("Đã xóa toàn bộ nhân sự và dữ liệu chấm công thành công. Hệ thống đã trở về trạng thái trống!");
+      localStorage.removeItem("private_birthdays");
+
+      onShowToast?.(
+        "Đã xóa toàn bộ nhân sự và dữ liệu chấm công thành công. Hệ thống đã trở về trạng thái trống!",
+        "success",
+      );
       onEmployeeAdded(); // triggers a full refresh in App.tsx
     } catch (err: any) {
       console.error(err);
-      alert("Lỗi khi xóa toàn bộ dữ liệu: " + err.message);
+      onShowToast?.("Lỗi khi xóa toàn bộ dữ liệu: " + err.message, "error");
     } finally {
       setIsDeletingAll(false);
     }
@@ -419,10 +664,17 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
 
   const handleDelete = async (emp: Employee) => {
     if (!emp.rowIndex) {
-      alert("Không thể xóa nhân viên này do thiếu thông tin vị trí dòng (rowIndex).");
+      onShowToast?.(
+        "Không thể xóa nhân viên này do thiếu thông tin vị trí dòng (rowIndex).",
+        "error",
+      );
       return;
     }
-    if (!window.confirm(`Bạn có chắc chắn muốn xóa nhân viên ${emp.name}? Hành động này không thể hoàn tác.`)) {
+    if (
+      !window.confirm(
+        `Bạn có chắc chắn muốn xóa nhân viên ${emp.name}? Hành động này không thể hoàn tác.`,
+      )
+    ) {
       return;
     }
     setDeletingState(emp.name);
@@ -433,13 +685,13 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
       const updated = { ...privateBirthdays };
       delete updated[emp.name];
       setPrivateBirthdays(updated);
-      localStorage.setItem('private_birthdays', JSON.stringify(updated));
+      localStorage.setItem("private_birthdays", JSON.stringify(updated));
 
       setIsDeleting(null);
       onEmployeeAdded();
     } catch (err: any) {
       console.error(err);
-      alert("Lỗi khi xóa nhân viên: " + err.message);
+      onShowToast?.("Lỗi khi xóa nhân viên: " + err.message, "error");
     } finally {
       setDeletingState(null);
     }
@@ -465,11 +717,11 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
             <div className="hidden sm:flex items-center bg-white dark:bg-slate-900 p-1 rounded-full border border-slate-200 dark:border-slate-800 shadow-xs shrink-0">
               <button
                 type="button"
-                onClick={() => setViewMode('grid')}
+                onClick={() => setViewMode("grid")}
                 className={`p-2 rounded-full transition-all cursor-pointer flex items-center gap-1.5 text-xs font-bold ${
-                  viewMode === 'grid'
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  viewMode === "grid"
+                    ? "bg-indigo-600 text-white shadow-xs"
+                    : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
                 }`}
                 title="Chế độ Thẻ Grid"
               >
@@ -478,11 +730,11 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
               </button>
               <button
                 type="button"
-                onClick={() => setViewMode('table')}
+                onClick={() => setViewMode("table")}
                 className={`p-2 rounded-full transition-all cursor-pointer flex items-center gap-1.5 text-xs font-bold ${
-                  viewMode === 'table'
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  viewMode === "table"
+                    ? "bg-indigo-600 text-white shadow-xs"
+                    : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
                 }`}
                 title="Chế độ Bảng Danh Sách"
               >
@@ -504,8 +756,6 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
             <Trash2 className="w-4 h-4" />
             {isDeletingAll ? "Đang xóa..." : "Xóa tất cả"}
           </motion.button>
-
-
 
           <motion.button
             whileHover={{ scale: 1.025, y: -1 }}
@@ -542,7 +792,13 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
               Nhập Hồ Sơ Nhân Viên Mới
             </h3>
 
-            <form onSubmit={(e) => { playConfirmSound(); handleSubmit(e); }} className="space-y-6">
+            <form
+              onSubmit={(e) => {
+                playConfirmSound();
+                handleSubmit(e);
+              }}
+              className="space-y-6"
+            >
               {/* THÔNG TIN CƠ BẢN */}
               <div className="bg-slate-50/50 dark:bg-slate-900/30 p-4 rounded-2xl border border-slate-100 dark:border-slate-800">
                 <h4 className="text-xs font-black text-slate-700 dark:text-slate-300 uppercase tracking-widest mb-4 flex items-center gap-2">
@@ -551,18 +807,25 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
                 </h4>
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Họ Và Tên (Admin Quản Lý)</label>
+                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
+                      Họ Và Tên (Admin Quản Lý)
+                    </label>
                     <input
                       type="text"
                       required
                       placeholder="Nguyễn Văn A"
                       value={empName}
-                      onChange={(e) => { setEmpName(e.target.value); setEmpExportName(getExportName(e.target.value)); }}
+                      onChange={(e) => {
+                        setEmpName(e.target.value);
+                        setEmpExportName(getExportName(e.target.value));
+                      }}
                       className="w-full px-4 py-2.5 text-sm bg-white dark:bg-slate-950/60 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 text-slate-800 dark:text-slate-100 transition-colors shadow-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider mb-2">Tên Xuất Báo Cáo / Hiển Thị</label>
+                    <label className="block text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider mb-2">
+                      Tên Xuất Báo Cáo / Hiển Thị
+                    </label>
                     <input
                       type="text"
                       placeholder="Ví dụ: Nhi, Thuận, Dũng, Hảo..."
@@ -578,9 +841,9 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
                     <label className="block text-xs font-bold text-pink-600 dark:text-pink-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
                       <span>🎂</span> Sinh Nhật (Bảo Mật)
                     </label>
-                    <DatePicker 
-                      value={empBirthday} 
-                      onChange={setEmpBirthday} 
+                    <DatePicker
+                      value={empBirthday}
+                      onChange={setEmpBirthday}
                       placeholder="Chọn ngày sinh nhật"
                     />
                   </div>
@@ -595,25 +858,43 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
                 </h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                   <div>
-                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Chức Vụ</label>
+                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
+                      Chức Vụ
+                    </label>
                     <select
                       value={empRole}
                       onChange={(e) => setEmpRole(e.target.value)}
                       className="w-full px-4 py-2.5 text-sm bg-white dark:bg-slate-950/60 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800 dark:text-slate-100 transition-colors shadow-sm"
                     >
                       {[
-                        "Nhân viên", "Trưởng phòng", "Editor", "Designer", "Intern", 
-                        "3D Generalist", "Developer", "Project Manager", "HR Manager", 
-                        "Video Editor", "Animator", "Marketing Specialist", "Business Analyst"
-                      ].map(role => (
-                        <option key={role} value={role} className="bg-white text-slate-900 dark:bg-slate-900 dark:text-white">
+                        "Nhân viên",
+                        "Trưởng phòng",
+                        "Editor",
+                        "Designer",
+                        "Intern",
+                        "3D Generalist",
+                        "Developer",
+                        "Project Manager",
+                        "HR Manager",
+                        "Video Editor",
+                        "Animator",
+                        "Marketing Specialist",
+                        "Business Analyst",
+                      ].map((role) => (
+                        <option
+                          key={role}
+                          value={role}
+                          className="bg-white text-slate-900 dark:bg-slate-900 dark:text-white"
+                        >
                           {role}
                         </option>
                       ))}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Bộ Phận</label>
+                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
+                      Bộ Phận
+                    </label>
                     <input
                       type="text"
                       list="dept-list"
@@ -623,22 +904,25 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
                       className="w-full px-4 py-2.5 text-sm bg-white dark:bg-slate-950/60 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800 dark:text-slate-100 transition-colors shadow-sm"
                     />
                     <datalist id="dept-list">
-                      {departments.map(d => <option key={d} value={d} />)}
+                      {departments.map((d) => (
+                        <option key={d} value={d} />
+                      ))}
                     </datalist>
                   </div>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5 text-emerald-500" /> Ngày Vào Làm
+                    <Calendar className="w-3.5 h-3.5 text-emerald-500" /> Ngày
+                    Vào Làm
                   </label>
-                  <DatePicker 
-                    value={empRegisteredAt} 
-                    onChange={setEmpRegisteredAt} 
+                  <DatePicker
+                    value={empRegisteredAt}
+                    onChange={setEmpRegisteredAt}
                     placeholder="Chọn ngày vào làm"
                   />
                 </div>
               </div>
-              
+
               <div className="bg-slate-50/50 dark:bg-slate-900/30 p-4 rounded-2xl border border-slate-100 dark:border-slate-800">
                 <h4 className="text-xs font-black text-slate-700 dark:text-slate-300 uppercase tracking-widest mb-4 flex items-center gap-2">
                   <Settings className="w-4 h-4 text-rose-500" />
@@ -657,7 +941,12 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
                       className="w-full px-4 py-2.5 text-sm bg-white dark:bg-slate-950/60 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 text-slate-800 dark:text-slate-100 transition-colors shadow-sm"
                     />
                     <p className="text-[10px] text-slate-500 mt-1.5 font-semibold leading-relaxed">
-                      💡 <strong>Cách quản lý cực đơn giản:</strong> Để trống để hệ thống tự động tính quỹ phép chuẩn. Gõ <span className="text-emerald-500">+5</span> để cộng thêm 5 ngày phép (thưởng thâm niên, phép cũ) hoặc gõ <span className="text-rose-500">-2</span> để trừ bớt 2 ngày phép.
+                      💡 <strong>Cách quản lý cực đơn giản:</strong> Để trống để
+                      hệ thống tự động tính quỹ phép chuẩn. Gõ{" "}
+                      <span className="text-emerald-500">+5</span> để cộng thêm
+                      5 ngày phép (thưởng thâm niên, phép cũ) hoặc gõ{" "}
+                      <span className="text-rose-500">-2</span> để trừ bớt 2
+                      ngày phép.
                     </p>
                   </div>
                 </div>
@@ -690,11 +979,10 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
             transition={{ ease: [0.3, 0, 0.2, 1], duration: 0.4 }}
           >
             {isLoading ? (
-              
-              viewMode === 'table' ? (
+              viewMode === "table" ? (
                 <div className="py-12 flex flex-col items-center justify-center min-h-[250px] bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-[28px]">
-                  <RandomLoader 
-                    message="Đang tải dữ liệu chấm công từ máy chủ..." 
+                  <RandomLoader
+                    message="Đang tải dữ liệu chấm công từ máy chủ..."
                     autoCycle={true}
                     cycleIntervalMs={2000}
                     themeColor="text-indigo-600 dark:text-indigo-400"
@@ -706,28 +994,70 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
             ) : filteredEmployees.length === 0 ? (
               <div className="bg-white dark:bg-slate-900 p-12 text-center rounded-[32px] border border-slate-100 dark:border-slate-800/80 text-slate-400 dark:text-slate-500 transition-colors duration-300 shadow-sm">
                 <User className="w-12 h-12 mx-auto mb-3 text-slate-300 dark:text-slate-700 animate-pulse" />
-                <p className="text-sm">Chưa có nhân viên nào trong danh sách hoặc không tìm thấy kết quả phù hợp</p>
+                <p className="text-sm">
+                  Chưa có nhân viên nào trong danh sách hoặc không tìm thấy kết
+                  quả phù hợp
+                </p>
               </div>
-            ) : viewMode === 'table' ? (
+            ) : viewMode === "table" ? (
               <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-[28px] overflow-hidden shadow-sm transition-colors duration-300">
-                <div onTouchStart={(e) => e.stopPropagation()} onTouchMove={(e) => e.stopPropagation()} onTouchEnd={(e) => e.stopPropagation()} className="overflow-x-auto">
+                <div
+                  onTouchStart={(e) => e.stopPropagation()}
+                  onTouchMove={(e) => e.stopPropagation()}
+                  onTouchEnd={(e) => e.stopPropagation()}
+                  className="overflow-x-auto"
+                >
                   <table className="no-swipe w-full min-w-max text-left border-collapse whitespace-nowrap">
                     <thead>
                       <tr className="no-swipe bg-slate-50/80 dark:bg-slate-950/80 border-b border-slate-100 dark:border-slate-800/80 text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                        <th className="py-4 px-4 whitespace-nowrap text-center w-12">STT</th>
-                        <th className="py-4 px-4 whitespace-nowrap">Họ & Tên Nhân Viên</th>
+                          <th className="p-4 w-10 text-center">
+                            <input
+                              type="checkbox"
+                              checked={filteredEmployees.length > 0 && selectedEmpNames.length === filteredEmployees.length}
+                              onChange={handleSelectAll}
+                              className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-900 cursor-pointer"
+                            />
+                          </th>
+                          <th className="py-4 px-4 whitespace-nowrap text-center w-12">
+                          STT
+                        </th>
+                        <th className="py-4 px-4 whitespace-nowrap">
+                          Họ & Tên Nhân Viên
+                        </th>
                         <th className="py-4 px-4 whitespace-nowrap">Chức Vụ</th>
-                <th className="py-4 px-4 whitespace-nowrap">Bộ Phận</th>
-                <th className="py-4 px-4 whitespace-nowrap">Ngày Vào Làm</th>
-                        <th className="py-4 px-4 whitespace-nowrap text-center">Điều Chỉnh Phép</th>
-                        <th className="py-4 px-4 whitespace-nowrap">Sinh Nhật 🔒</th>
-                        <th className="py-4 px-4 whitespace-nowrap text-right pr-6">Thao Tác</th>
+                        <th className="py-4 px-4 whitespace-nowrap">Bộ Phận</th>
+                        <th className="py-4 px-4 whitespace-nowrap">
+                          Ngày Vào Làm
+                        </th>
+                        <th className="py-4 px-4 whitespace-nowrap text-center">
+                          Phép Còn Lại
+                        </th>
+                        <th className="py-4 px-4 whitespace-nowrap text-center">
+                          Điều Chỉnh Phép
+                        </th>
+                        <th className="py-4 px-4 whitespace-nowrap">
+                          Sinh Nhật 🔒
+                        </th>
+                        <th className="py-4 px-4 whitespace-nowrap text-right pr-6">
+                          Thao Tác
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-xs">
                       {filteredEmployees.map((emp, idx) => {
-                        const mainIndex = employees.findIndex(e => e.name === emp.name);
-                        const carryover = emp.leaveCarryover !== undefined ? emp.leaveCarryover : getInitialCarryover(emp.name);
+                        const mainIndex = employees.findIndex(
+                          (e) => e.name === emp.name,
+                        );
+                        const leaveReport = recalculateAnnualLeave(
+                          emp,
+                          timeLogs || [],
+                          new Date().getFullYear(),
+                        );
+                        const remainingLeave = leaveReport.leaveRemaining;
+                        const carryover =
+                          emp.leaveCarryover !== undefined
+                            ? emp.leaveCarryover
+                            : getInitialCarryover(emp.name);
                         return (
                           <motion.tr
                             key={emp.name}
@@ -737,6 +1067,14 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
                             className="group transition-colors duration-200 cursor-default hover:bg-slate-50 dark:hover:bg-slate-800/40"
                           >
                             <td className="py-3.5 px-4 text-center font-mono font-bold text-slate-400 dark:text-slate-500">
+                              <input
+                                type="checkbox"
+                                checked={selectedEmpNames.includes(emp.name)}
+                                onChange={() => toggleSelectEmp(emp.name)}
+                                className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 cursor-pointer"
+                              />
+                            </td>
+                            <td className="py-3.5 px-4 text-center font-mono font-bold text-slate-400 dark:text-slate-500">
                               {idx + 1}
                             </td>
                             <td className="py-3.5 px-4 font-bold text-slate-800 dark:text-slate-100">
@@ -745,12 +1083,21 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
                                   {emp.name.charAt(0)}
                                 </div>
                                 <div>
-                                  <span className="block font-bold text-sm text-slate-850 dark:text-slate-100">{getDisplayNameFromList(emp.name, !!accessToken, employees)}</span>
+                                  <span className="block font-bold text-sm text-slate-850 dark:text-slate-100">
+                                    {getDisplayNameFromList(
+                                      emp.name,
+                                      !!accessToken,
+                                      employees,
+                                    )}
+                                  </span>
                                   <span className="inline-block text-[10px] bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-bold px-1.5 py-0.5 rounded border border-indigo-100/50 dark:border-indigo-900/30 mt-0.5">
-                                    Xuất file: {getExportName(emp.name)}
+                                    Xuất file:{" "}
+                                    {getExportName(emp.name, emp.displayName)}
                                   </span>
                                   {emp.leftAt && (
-                                    <span className="text-[10px] text-rose-500 font-mono block mt-0.5">Nghỉ: {emp.leftAt}</span>
+                                    <span className="text-[10px] text-rose-500 font-mono block mt-0.5">
+                                      Nghỉ: {emp.leftAt}
+                                    </span>
                                   )}
                                 </div>
                               </div>
@@ -768,20 +1115,28 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
                               {emp.registeredAt || "N/A"}
                             </td>
                             <td className="py-3.5 px-4 text-center">
-                              <span className={`inline-block font-mono font-bold px-2.5 py-1 rounded-lg ${
-                                carryover > 0 
-                                  ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/30"
-                                  : carryover < 0 
-                                    ? "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-100 dark:border-rose-900/30"
-                                    : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
-                              }`}>
-                                {carryover > 0 ? `+${carryover}` : carryover} ngày
+                              <span className="inline-block font-mono font-bold px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/30">
+                                {leaveReport.leaveRemaining} ngày
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-4 text-center">
+                              <span
+                                className={`inline-block font-mono font-bold px-2.5 py-1 rounded-lg ${
+                                  carryover > 0
+                                    ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/30"
+                                    : carryover < 0
+                                      ? "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-100 dark:border-rose-900/30"
+                                      : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
+                                }`}
+                              >
+                                {carryover > 0 ? `+${carryover}` : carryover}{" "}
+                                ngày
                               </span>
                             </td>
                             <td className="py-3.5 px-4 text-slate-600 dark:text-slate-400">
-                              {privateBirthdays[emp.name] ? (
+                              {emp.dateOfBirth ? (
                                 <span className="font-semibold text-pink-600 dark:text-pink-400 flex items-center gap-1">
-                                  <span>🎂</span> {privateBirthdays[emp.name]}
+                                  <span>🎂</span> {emp.dateOfBirth}
                                 </span>
                               ) : (
                                 <button
@@ -799,15 +1154,22 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
                                   <>
                                     <button
                                       disabled={isReordering || mainIndex === 0}
-                                      onClick={() => handleMoveEmployee(emp.name, 'up')}
+                                      onClick={() =>
+                                        handleMoveEmployee(emp.name, "up")
+                                      }
                                       className="p-1.5 rounded-lg bg-slate-50 hover:bg-indigo-50 dark:bg-slate-800 dark:hover:bg-indigo-950 text-slate-400 hover:text-indigo-600 cursor-pointer disabled:opacity-30"
                                       title="Lên"
                                     >
                                       <ChevronUp className="w-3.5 h-3.5" />
                                     </button>
                                     <button
-                                      disabled={isReordering || mainIndex === employees.length - 1}
-                                      onClick={() => handleMoveEmployee(emp.name, 'down')}
+                                      disabled={
+                                        isReordering ||
+                                        mainIndex === employees.length - 1
+                                      }
+                                      onClick={() =>
+                                        handleMoveEmployee(emp.name, "down")
+                                      }
                                       className="p-1.5 rounded-lg bg-slate-50 hover:bg-indigo-50 dark:bg-slate-800 dark:hover:bg-indigo-950 text-slate-400 hover:text-indigo-600 cursor-pointer disabled:opacity-30"
                                       title="Xuống"
                                     >
@@ -849,290 +1211,405 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
                         {group.employees.length} nhân sự
                       </span>
                     </h3>
-                    <motion.div layout className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-5 sm:gap-6">
-                      {group.employees.map((emp, idx) => {
-                  const mainIndex = employees.findIndex(e => e.name === emp.name);
-                  return (
                     <motion.div
                       layout
-                      key={emp.name}
-                      initial={{ opacity: 0, scale: 0.96, y: 15 }}
-                      animate={{ opacity: 1, scale: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.95 }}
-                      whileHover={{ scale: 1.02, y: -4, boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)" }}
-                      transition={{ duration: 0.3, delay: idx * 0.05, ease: "easeOut" }}
-                      className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-[24px] sm:rounded-[28px] p-4 sm:p-5 shadow-sm transition-colors duration-200 flex flex-col items-center relative overflow-hidden group cursor-default"
+                      className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-5 sm:gap-6"
                     >
-                      {/* Design accent in gradient matching M3 feel */}
-                      <div className="absolute top-0 inset-x-0 h-1.5 bg-gradient-to-r from-indigo-500 via-sky-500 to-indigo-500 bg-[length:200%_auto] group-hover:bg-right transition-all duration-500" />
-
-                      {/* Reordering buttons (only visible when logged in and hovered) */}
-                      {accessToken && mainIndex !== -1 && (
-                        <div className="absolute top-3 left-3 flex items-center gap-1 opacity-100 transition-opacity z-10 no-print">
-                          <motion.button
-                            whileHover={{ scale: 1.15 }}
-                            whileTap={{ scale: 0.9 }}
-                            disabled={isReordering || mainIndex === 0}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleMoveEmployee(emp.name, 'up');
+                      {group.employees.map((emp, idx) => {
+                        const mainIndex = employees.findIndex(
+                          (e) => e.name === emp.name,
+                        );
+                        const leaveReport = recalculateAnnualLeave(
+                          emp,
+                          timeLogs || [],
+                          new Date().getFullYear(),
+                        );
+                        const remainingLeave = leaveReport.leaveRemaining;
+                        return (
+                          <motion.div
+                            layout
+                            key={emp.name}
+                            initial={{ opacity: 0, scale: 0.96, y: 15 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            whileHover={{
+                              scale: 1.02,
+                              y: -4,
+                              boxShadow:
+                                "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
                             }}
-                            className={`p-1 bg-slate-50 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 rounded-lg text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 border border-slate-150 dark:border-slate-700 transition-all cursor-pointer ${
-                              mainIndex === 0 ? 'opacity-30 cursor-not-allowed' : ''
-                            }`}
-                            title="Di chuyển lên"
-                          >
-                            <ChevronUp className="w-3.5 h-3.5" />
-                          </motion.button>
-                          <motion.button
-                            whileHover={{ scale: 1.15 }}
-                            whileTap={{ scale: 0.9 }}
-                            disabled={isReordering || mainIndex === employees.length - 1}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleMoveEmployee(emp.name, 'down');
+                            transition={{
+                              duration: 0.3,
+                              delay: idx * 0.05,
+                              ease: "easeOut",
                             }}
-                            className={`p-1 bg-slate-50 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 rounded-lg text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 border border-slate-150 dark:border-slate-700 transition-all cursor-pointer ${
-                              mainIndex === employees.length - 1 ? 'opacity-30 cursor-not-allowed' : ''
-                            }`}
-                            title="Di chuyển xuống"
+                            className="neon-glass-card bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-[24px] sm:rounded-[28px] p-4 sm:p-5 shadow-sm transition-all duration-300 flex flex-col items-center relative overflow-hidden group cursor-pointer"
                           >
-                            <ChevronDown className="w-3.5 h-3.5" />
-                          </motion.button>
-                        </div>
-                      )}
+                            {/* Design accent in gradient matching M3 feel */}
+                            <div className="absolute top-0 inset-x-0 h-1.5 bg-gradient-to-r from-indigo-500 via-sky-500 to-indigo-500 bg-[length:200%_auto] group-hover:bg-right transition-all duration-500" />
 
-                      {/* Action buttons (only visible when not currently confirming) */}
-                      {isDeleting !== emp.name && (
-                        <div className="absolute top-3 right-3 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
-                          {/* Edit button */}
-                          <motion.button
-                            whileHover={{ scale: 1.12 }}
-                            whileTap={{ scale: 0.9 }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleStartEdit(emp);
-                            }}
-                            className="p-1.5 rounded-xl bg-slate-50 hover:bg-indigo-50 dark:bg-slate-800 dark:hover:bg-indigo-950/30 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 border border-transparent hover:border-indigo-100 dark:hover:border-indigo-900/20 transition-all cursor-pointer"
-                            title="Chỉnh sửa nhân viên"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </motion.button>
+                            {/* Checkbox for Bulk Actions */}
+                            <div className="absolute top-4 left-4 z-20">
+                              <input
+                                type="checkbox"
+                                checked={selectedEmpNames.includes(emp.name)}
+                                onChange={(e) => {
+                                  e.stopPropagation();
+                                  toggleSelectEmp(emp.name);
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                                className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 cursor-pointer shadow-sm"
+                              />
+                            </div>
 
-                          {/* Delete button */}
-                          <motion.button
-                            whileHover={{ scale: 1.12 }}
-                            whileTap={{ scale: 0.9 }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setIsDeleting(emp.name);
-                            }}
-                            className="p-1.5 rounded-xl bg-slate-50 hover:bg-rose-50 dark:bg-slate-800 dark:hover:bg-rose-950/30 text-slate-400 hover:text-rose-500 border border-transparent hover:border-rose-100 dark:hover:border-rose-900/20 transition-all cursor-pointer"
-                            title="Xóa nhân viên"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </motion.button>
-                        </div>
-                      )}
-
-                      {/* Icon Avatar placeholder */}
-                      <motion.div 
-                        whileHover={{ scale: 1.1, rotate: 3 }}
-                        transition={{ duration: 0.2 }}
-                        className="w-16 h-16 rounded-2xl bg-indigo-50 dark:bg-indigo-950/50 flex items-center justify-center text-indigo-600 dark:text-indigo-400 mt-2 mb-4 transition-colors duration-300 shadow-xs"
-                      >
-                        <User className="w-8 h-8" />
-                      </motion.div>
-
-                      {/* Profile labels */}
-                      <h4 className="font-bold text-slate-850 dark:text-slate-100 text-sm text-center mb-0.5 leading-snug line-clamp-1">{getDisplayNameFromList(emp.name, !!accessToken, employees)}</h4>
-                      <span className="text-[10px] bg-indigo-50/80 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 font-bold px-2 py-0.5 rounded-md border border-indigo-100/40 dark:border-indigo-900/30 mb-2">
-                        Xuất file: {getExportName(emp.name)}
-                      </span>
-                      <div className="flex flex-wrap items-center justify-center gap-2 mb-4">
-                        <p className="text-[11px] text-indigo-600 dark:text-indigo-400 font-bold flex items-center gap-1.5 bg-indigo-50/80 dark:bg-indigo-950/50 px-2.5 py-1 rounded-full border border-indigo-100/40 dark:border-indigo-900/30 shadow-xs">
-                          <Briefcase className="w-3.5 h-3.5" />
-                          {emp.role}
-                        </p>
-                        <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1.5 bg-emerald-50/80 dark:bg-emerald-950/50 px-2.5 py-1 rounded-full border border-emerald-100/40 dark:border-emerald-900/30 shadow-xs">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.5)]"></span>
-                          {emp.department || 'Chưa phân bổ'}
-                        </p>
-                      </div>
-
-                      {/* Metadata Row */}
-                      <div className="w-full border-t border-slate-50 dark:border-slate-800/60 pt-3 mt-auto flex flex-col gap-1 text-[11px] text-slate-450 dark:text-slate-500 font-mono">
-                        <span className="flex items-center gap-1">
-                          <Calendar className="w-3 h-3 text-indigo-500" />
-                          Vào làm: {emp.registeredAt || "N/A"}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <span className="text-indigo-500 font-bold text-xs">★</span>
-                          Quỹ phép chuẩn: {emp.leaveAllowance !== undefined ? `${emp.leaveAllowance} ngày` : "Tự động"}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <span className="text-indigo-500 font-bold text-xs">⚙️</span>
-                          Phép điều chỉnh: {emp.leaveCarryover !== undefined ? `${emp.leaveCarryover > 0 ? '+' : ''}${emp.leaveCarryover} ngày` : (() => {
-                            const init = getInitialCarryover(emp.name);
-                            return init > 0 ? `+${init} ngày` : "0 ngày";
-                          })()}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <span className="text-pink-500 text-[11px]">🎂</span>
-                          Sinh nhật: {privateBirthdays[emp.name] ? (
-                            <span className="text-slate-700 dark:text-slate-350 font-semibold">{privateBirthdays[emp.name]} <span className="text-[10px] text-pink-500 font-sans" title="Chỉ mình bạn thấy">(Riêng tư 🔒)</span></span>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleStartEdit(emp);
-                              }}
-                              className="text-slate-400 dark:text-slate-500 hover:text-pink-500 dark:hover:text-pink-400 hover:underline cursor-pointer font-sans text-left"
-                            >
-                              Thêm (Riêng tư 🔒)
-                            </button>
-                          )}
-                        </span>
-                        {emp.leftAt && (
-                          <span className="flex items-center gap-1 text-rose-500">
-                            <Calendar className="w-3 h-3 text-rose-500" />
-                            Rời khỏi: {emp.leftAt}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Quick Leave Adjuster Widget */}
-                      <div className="w-full bg-slate-50 dark:bg-slate-950/40 p-2.5 rounded-2xl border border-slate-100 dark:border-slate-800/60 mt-3 flex flex-col items-center gap-1.5 no-print">
-                        <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Phép điều chỉnh nhanh</span>
-                        <div className="flex items-center gap-1.5">
-                          <motion.button
-                            whileHover={{ scale: 1.15 }}
-                            whileTap={{ scale: 0.9 }}
-                            disabled={updatingLeaveEmp === emp.name || !emp.rowIndex}
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              if (!emp.rowIndex) return;
-                              const currentVal = emp.leaveCarryover !== undefined ? emp.leaveCarryover : getInitialCarryover(emp.name);
-                              const newVal = currentVal - 1;
-                              setUpdatingLeaveEmp(emp.name);
-                              try {
-                                await updateEmployee(
-                                  accessToken,
-                                  emp.rowIndex,
-                                  emp.name,
-                                  emp.name,
-                                  emp.role,
-                                  emp.registeredAt,
-                                  emp.leftAt || '',
-                                  emp.leaveAllowance,
-                                  newVal,
-                                  emp.displayName
-                                );
-                                onEmployeeAdded();
-                              } catch (err: any) {
-                                alert("Lỗi khi cập nhật phép: " + err.message);
-                              } finally {
-                                setUpdatingLeaveEmp(null);
-                              }
-                            }}
-                            className="w-7 h-7 rounded-full bg-white dark:bg-slate-900 hover:bg-rose-50 dark:hover:bg-rose-950/20 text-slate-500 hover:text-rose-600 border border-slate-150 dark:border-slate-800 flex items-center justify-center font-bold text-sm transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
-                            title="Trừ 1 ngày phép"
-                          >
-                            -
-                          </motion.button>
-                          
-                          <span className="text-[11px] font-mono font-bold px-2 py-0.5 bg-white dark:bg-slate-900 border border-slate-150 dark:border-slate-800 rounded-lg min-w-[56px] text-center flex items-center justify-center gap-1 shadow-sm">
-                            {updatingLeaveEmp === emp.name ? (
-                              <span className="w-3 h-3 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-                            ) : (
-                              <span className={
-                                (emp.leaveCarryover !== undefined ? emp.leaveCarryover : getInitialCarryover(emp.name)) > 0 
-                                  ? "text-emerald-600 dark:text-emerald-400 font-bold" 
-                                  : (emp.leaveCarryover !== undefined ? emp.leaveCarryover : getInitialCarryover(emp.name)) < 0 
-                                    ? "text-rose-500 font-bold" 
-                                    : "text-slate-500"
-                              }>
-                                {(emp.leaveCarryover !== undefined ? emp.leaveCarryover : getInitialCarryover(emp.name)) > 0 ? "+" : ""}
-                                {emp.leaveCarryover !== undefined ? emp.leaveCarryover : getInitialCarryover(emp.name)} ngày
-                              </span>
+                            {/* Reordering buttons (only visible when logged in and hovered) */}
+                            {accessToken && mainIndex !== -1 && (
+                              <div className="absolute top-3 left-12 flex items-center gap-1 opacity-100 transition-opacity z-10 no-print">
+                                <motion.button
+                                  whileHover={{ scale: 1.15 }}
+                                  whileTap={{ scale: 0.9 }}
+                                  disabled={isReordering || mainIndex === 0}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleMoveEmployee(emp.name, "up");
+                                  }}
+                                  className={`p-1 bg-slate-50 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 rounded-lg text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 border border-slate-150 dark:border-slate-700 transition-all cursor-pointer ${
+                                    mainIndex === 0
+                                      ? "opacity-30 cursor-not-allowed"
+                                      : ""
+                                  }`}
+                                  title="Di chuyển lên"
+                                >
+                                  <ChevronUp className="w-3.5 h-3.5" />
+                                </motion.button>
+                                <motion.button
+                                  whileHover={{ scale: 1.15 }}
+                                  whileTap={{ scale: 0.9 }}
+                                  disabled={
+                                    isReordering ||
+                                    mainIndex === employees.length - 1
+                                  }
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleMoveEmployee(emp.name, "down");
+                                  }}
+                                  className={`p-1 bg-slate-50 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 rounded-lg text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 border border-slate-150 dark:border-slate-700 transition-all cursor-pointer ${
+                                    mainIndex === employees.length - 1
+                                      ? "opacity-30 cursor-not-allowed"
+                                      : ""
+                                  }`}
+                                  title="Di chuyển xuống"
+                                >
+                                  <ChevronDown className="w-3.5 h-3.5" />
+                                </motion.button>
+                              </div>
                             )}
-                          </span>
 
-                          <motion.button
-                            whileHover={{ scale: 1.15 }}
-                            whileTap={{ scale: 0.9 }}
-                            disabled={updatingLeaveEmp === emp.name || !emp.rowIndex}
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              if (!emp.rowIndex) return;
-                              const currentVal = emp.leaveCarryover !== undefined ? emp.leaveCarryover : getInitialCarryover(emp.name);
-                              const newVal = currentVal + 1;
-                              setUpdatingLeaveEmp(emp.name);
-                              try {
-                                await updateEmployee(
-                                  accessToken,
-                                  emp.rowIndex,
-                                  emp.name,
-                                  emp.name,
-                                  emp.role,
-                                  emp.registeredAt,
-                                  emp.leftAt || '',
-                                  emp.leaveAllowance,
-                                  newVal,
-                                  emp.displayName
-                                );
-                                onEmployeeAdded();
-                              } catch (err: any) {
-                                alert("Lỗi khi cập nhật phép: " + err.message);
-                              } finally {
-                                setUpdatingLeaveEmp(null);
-                              }
-                            }}
-                            className="w-7 h-7 rounded-full bg-white dark:bg-slate-900 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 text-slate-500 hover:text-emerald-600 border border-slate-150 dark:border-slate-800 flex items-center justify-center font-bold text-sm transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
-                            title="Cộng 1 ngày phép"
-                          >
-                            +
-                          </motion.button>
-                        </div>
-                      </div>
+                            {/* Action buttons (only visible when not currently confirming) */}
+                            {isDeleting !== emp.name && (
+                              <div className="absolute top-3 right-3 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                                {/* Edit button */}
+                                <motion.button
+                                  whileHover={{ scale: 1.12 }}
+                                  whileTap={{ scale: 0.9 }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleStartEdit(emp);
+                                  }}
+                                  className="p-1.5 rounded-xl bg-slate-50 hover:bg-indigo-50 dark:bg-slate-800 dark:hover:bg-indigo-950/30 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 border border-transparent hover:border-indigo-100 dark:hover:border-indigo-900/20 transition-all cursor-pointer"
+                                  title="Chỉnh sửa nhân viên"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </motion.button>
 
-                      {/* Confirm Deletion Overlay */}
-                      {isDeleting === emp.name && (
-                        <motion.div 
-                          initial={{ opacity: 0, scale: 0.9 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0.9 }}
-                          className="absolute inset-0 bg-white/95 dark:bg-slate-900/95 flex flex-col items-center justify-center p-4 z-10"
-                        >
-                          <p className="text-xs font-bold text-rose-600 dark:text-rose-400 mb-3 text-center leading-relaxed">
-                            Xác nhận xóa nhân viên <br />
-                            <span className="text-slate-800 dark:text-slate-100 text-sm font-extrabold">{getDisplayNameFromList(emp.name, !!accessToken, employees)}</span>?
-                          </p>
-                          <div className="flex gap-2 w-full">
-                            <motion.button
-                              whileHover={{ scale: 1.03 }}
-                              whileTap={{ scale: 0.96 }}
-                              onClick={() => setIsDeleting(null)}
-                              className="flex-1 py-1.5 text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl transition-colors cursor-pointer"
+                                {/* Delete button */}
+                                <motion.button
+                                  whileHover={{ scale: 1.12 }}
+                                  whileTap={{ scale: 0.9 }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setIsDeleting(emp.name);
+                                  }}
+                                  className="p-1.5 rounded-xl bg-slate-50 hover:bg-rose-50 dark:bg-slate-800 dark:hover:bg-rose-950/30 text-slate-400 hover:text-rose-500 border border-transparent hover:border-rose-100 dark:hover:border-rose-900/20 transition-all cursor-pointer"
+                                  title="Xóa nhân viên"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </motion.button>
+                              </div>
+                            )}
+
+                            {/* Icon Avatar placeholder */}
+                            <motion.div
+                              whileHover={{ scale: 1.1, rotate: 3 }}
+                              transition={{ duration: 0.2 }}
+                              className="w-16 h-16 rounded-2xl bg-indigo-50 dark:bg-indigo-950/50 flex items-center justify-center text-indigo-600 dark:text-indigo-400 mt-2 mb-4 transition-colors duration-300 shadow-xs"
                             >
-                              Hủy
-                            </motion.button>
-                            <motion.button
-                              whileHover={{ scale: 1.03 }}
-                              whileTap={{ scale: 0.96 }}
-                              onClick={() => handleDelete(emp)}
-                              disabled={deletingState === emp.name}
-                              className="flex-1 py-1.5 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-xl shadow-sm transition-colors flex items-center justify-center gap-1 cursor-pointer"
-                            >
-                              {deletingState === emp.name ? "Đang xóa..." : "Xóa"}
-                            </motion.button>
-                          </div>
-                        </motion.div>
-                      )}
-                    </motion.div>
-                  );
-                })}
+                              <User className="w-8 h-8" />
+                            </motion.div>
+
+                            {/* Profile labels */}
+                            <h4 className="font-bold text-slate-850 dark:text-slate-100 text-sm text-center mb-0.5 leading-snug line-clamp-1">
+                              {getDisplayNameFromList(
+                                emp.name,
+                                !!accessToken,
+                                employees,
+                              )}
+                            </h4>
+                            <span className="text-[10px] bg-indigo-50/80 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 font-bold px-2 py-0.5 rounded-md border border-indigo-100/40 dark:border-indigo-900/30 mb-2">
+                              Xuất file:{" "}
+                              {getExportName(emp.name, emp.displayName)}
+                            </span>
+                            <div className="flex flex-wrap items-center justify-center gap-2 mb-4">
+                              <p className="text-[11px] text-indigo-600 dark:text-indigo-400 font-bold flex items-center gap-1.5 bg-indigo-50/80 dark:bg-indigo-950/50 px-2.5 py-1 rounded-full border border-indigo-100/40 dark:border-indigo-900/30 shadow-xs">
+                                <Briefcase className="w-3.5 h-3.5" />
+                                {emp.role}
+                              </p>
+                              <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1.5 bg-emerald-50/80 dark:bg-emerald-950/50 px-2.5 py-1 rounded-full border border-emerald-100/40 dark:border-emerald-900/30 shadow-xs">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.5)]"></span>
+                                {emp.department || "Chưa phân bổ"}
+                              </p>
+                            </div>
+
+                            {/* Metadata Row */}
+                            <div className="w-full border-t border-slate-50 dark:border-slate-800/60 pt-3 mt-auto flex flex-col gap-1 text-[11px] text-slate-450 dark:text-slate-500 font-mono">
+                              <span className="flex items-center gap-1">
+                                <Calendar className="w-3 h-3 text-indigo-500" />
+                                Vào làm: {emp.registeredAt || "N/A"}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <span className="text-indigo-500 font-bold text-xs">
+                                  ★
+                                </span>
+                                Quỹ phép chuẩn:{" "}
+                                {emp.leaveAllowance !== undefined
+                                  ? `${emp.leaveAllowance} ngày`
+                                  : "Tự động"}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <span className="text-indigo-500 font-bold text-xs">
+                                  ⚙️
+                                </span>
+                                Phép điều chỉnh:{" "}
+                                {emp.leaveCarryover !== undefined
+                                  ? `${emp.leaveCarryover > 0 ? "+" : ""}${emp.leaveCarryover} ngày`
+                                  : (() => {
+                                      const init = getInitialCarryover(
+                                        emp.name,
+                                      );
+                                      return init > 0
+                                        ? `+${init} ngày`
+                                        : "0 ngày";
+                                    })()}
+                              </span>
+                              <span className="flex items-center gap-1 font-bold text-indigo-700 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-1 rounded border border-indigo-100/50 dark:border-indigo-900/30">
+                                <span className="text-[12px]">⏳</span>
+                                Phép còn lại: {remainingLeave} ngày
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <span className="text-pink-500 text-[11px]">
+                                  🎂
+                                </span>
+                                Sinh nhật:{" "}
+                                {emp.dateOfBirth ? (
+                                  <span className="text-slate-700 dark:text-slate-350 font-semibold">
+                                    {emp.dateOfBirth}
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleStartEdit(emp);
+                                    }}
+                                    className="text-slate-400 dark:text-slate-500 hover:text-pink-500 dark:hover:text-pink-400 hover:underline cursor-pointer font-sans text-left"
+                                  >
+                                    Thêm (Riêng tư 🔒)
+                                  </button>
+                                )}
+                              </span>
+                              {emp.leftAt && (
+                                <span className="flex items-center gap-1 text-rose-500">
+                                  <Calendar className="w-3 h-3 text-rose-500" />
+                                  Rời khỏi: {emp.leftAt}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Quick Leave Adjuster Widget */}
+                            <div className="w-full bg-slate-50 dark:bg-slate-950/40 p-2.5 rounded-2xl border border-slate-100 dark:border-slate-800/60 mt-3 flex flex-col items-center gap-1.5 no-print">
+                              <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
+                                Phép điều chỉnh nhanh
+                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <motion.button
+                                  whileHover={{ scale: 1.15 }}
+                                  whileTap={{ scale: 0.9 }}
+                                  disabled={
+                                    updatingLeaveEmp === emp.name ||
+                                    !emp.rowIndex
+                                  }
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    if (!emp.rowIndex) return;
+                                    const currentVal =
+                                      emp.leaveCarryover !== undefined
+                                        ? emp.leaveCarryover
+                                        : getInitialCarryover(emp.name);
+                                    const newVal = currentVal - 1;
+                                    setUpdatingLeaveEmp(emp.name);
+                                    try {
+                                      await updateEmployee(
+                                        accessToken,
+                                        emp.rowIndex,
+                                        emp.name,
+                                        emp.name,
+                                        emp.role,
+                                        emp.registeredAt,
+                                        emp.leftAt || "",
+                                        emp.leaveAllowance,
+                                        newVal,
+                                        emp.displayName,
+                                      );
+                                      onEmployeeAdded();
+                                    } catch (err: any) {
+                                      onShowToast?.(
+                                        "Lỗi khi cập nhật phép: " + err.message,
+                                        "error",
+                                      );
+                                    } finally {
+                                      setUpdatingLeaveEmp(null);
+                                    }
+                                  }}
+                                  className="w-7 h-7 rounded-full bg-white dark:bg-slate-900 hover:bg-rose-50 dark:hover:bg-rose-950/20 text-slate-500 hover:text-rose-600 border border-slate-150 dark:border-slate-800 flex items-center justify-center font-bold text-sm transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
+                                  title="Trừ 1 ngày phép"
+                                >
+                                  -
+                                </motion.button>
+
+                                <span className="text-[11px] font-mono font-bold px-2 py-0.5 bg-white dark:bg-slate-900 border border-slate-150 dark:border-slate-800 rounded-lg min-w-[56px] text-center flex items-center justify-center gap-1 shadow-sm">
+                                  {updatingLeaveEmp === emp.name ? (
+                                    <span className="w-3 h-3 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                                  ) : (
+                                    <span
+                                      className={
+                                        (emp.leaveCarryover !== undefined
+                                          ? emp.leaveCarryover
+                                          : getInitialCarryover(emp.name)) > 0
+                                          ? "text-emerald-600 dark:text-emerald-400 font-bold"
+                                          : (emp.leaveCarryover !== undefined
+                                                ? emp.leaveCarryover
+                                                : getInitialCarryover(
+                                                    emp.name,
+                                                  )) < 0
+                                            ? "text-rose-500 font-bold"
+                                            : "text-slate-500"
+                                      }
+                                    >
+                                      {(emp.leaveCarryover !== undefined
+                                        ? emp.leaveCarryover
+                                        : getInitialCarryover(emp.name)) > 0
+                                        ? "+"
+                                        : ""}
+                                      {emp.leaveCarryover !== undefined
+                                        ? emp.leaveCarryover
+                                        : getInitialCarryover(emp.name)}{" "}
+                                      ngày
+                                    </span>
+                                  )}
+                                </span>
+
+                                <motion.button
+                                  whileHover={{ scale: 1.15 }}
+                                  whileTap={{ scale: 0.9 }}
+                                  disabled={
+                                    updatingLeaveEmp === emp.name ||
+                                    !emp.rowIndex
+                                  }
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    if (!emp.rowIndex) return;
+                                    const currentVal =
+                                      emp.leaveCarryover !== undefined
+                                        ? emp.leaveCarryover
+                                        : getInitialCarryover(emp.name);
+                                    const newVal = currentVal + 1;
+                                    setUpdatingLeaveEmp(emp.name);
+                                    try {
+                                      await updateEmployee(
+                                        accessToken,
+                                        emp.rowIndex,
+                                        emp.name,
+                                        emp.name,
+                                        emp.role,
+                                        emp.registeredAt,
+                                        emp.leftAt || "",
+                                        emp.leaveAllowance,
+                                        newVal,
+                                        emp.displayName,
+                                      );
+                                      onEmployeeAdded();
+                                    } catch (err: any) {
+                                      onShowToast?.(
+                                        "Lỗi khi cập nhật phép: " + err.message,
+                                        "error",
+                                      );
+                                    } finally {
+                                      setUpdatingLeaveEmp(null);
+                                    }
+                                  }}
+                                  className="w-7 h-7 rounded-full bg-white dark:bg-slate-900 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 text-slate-500 hover:text-emerald-600 border border-slate-150 dark:border-slate-800 flex items-center justify-center font-bold text-sm transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
+                                  title="Cộng 1 ngày phép"
+                                >
+                                  +
+                                </motion.button>
+                              </div>
+                            </div>
+
+                            {/* Confirm Deletion Overlay */}
+                            {isDeleting === emp.name && (
+                              <motion.div
+                                initial={{ opacity: 0, scale: 0.9 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.9 }}
+                                className="absolute inset-0 bg-white/95 dark:bg-slate-900/95 flex flex-col items-center justify-center p-4 z-10"
+                              >
+                                <p className="text-xs font-bold text-rose-600 dark:text-rose-400 mb-3 text-center leading-relaxed">
+                                  Xác nhận xóa nhân viên <br />
+                                  <span className="text-slate-800 dark:text-slate-100 text-sm font-extrabold">
+                                    {getDisplayNameFromList(
+                                      emp.name,
+                                      !!accessToken,
+                                      employees,
+                                    )}
+                                  </span>
+                                  ?
+                                </p>
+                                <div className="flex gap-2 w-full">
+                                  <motion.button
+                                    whileHover={{ scale: 1.03 }}
+                                    whileTap={{ scale: 0.96 }}
+                                    onClick={() => setIsDeleting(null)}
+                                    className="flex-1 py-1.5 text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl transition-colors cursor-pointer"
+                                  >
+                                    Hủy
+                                  </motion.button>
+                                  <motion.button
+                                    whileHover={{ scale: 1.03 }}
+                                    whileTap={{ scale: 0.96 }}
+                                    onClick={() => handleDelete(emp)}
+                                    disabled={deletingState === emp.name}
+                                    className="flex-1 py-1.5 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-xl shadow-sm transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                                  >
+                                    {deletingState === emp.name
+                                      ? "Đang xóa..."
+                                      : "Xóa"}
+                                  </motion.button>
+                                </div>
+                              </motion.div>
+                            )}
+                          </motion.div>
+                        );
+                      })}
                     </motion.div>
                   </div>
                 ))}
@@ -1163,7 +1640,7 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
             >
               {/* Top accent */}
               <div className="h-1.5 rounded-t-[32px] bg-gradient-to-r from-indigo-500 via-purple-500 to-sky-500" />
-              
+
               <div className="p-4 sm:p-8">
                 <h3 className="font-sans font-bold text-lg text-slate-800 dark:text-slate-100 mb-6 flex items-center gap-2 border-b border-slate-50 dark:border-slate-800 pb-3">
                   <div className="p-1.5 bg-indigo-50 dark:bg-indigo-950/50 rounded-lg text-indigo-600 dark:text-indigo-400">
@@ -1177,7 +1654,9 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
                     {/* Left Column: Basic Information */}
                     <div className="space-y-4 text-left">
                       <div>
-                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Họ Và Tên (Admin Quản Lý)</label>
+                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
+                          Họ Và Tên (Admin Quản Lý)
+                        </label>
                         <input
                           type="text"
                           required
@@ -1189,7 +1668,10 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
                       </div>
 
                       <div>
-                        <label className="block text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider mb-2">Tên Xuất Báo Cáo / Tên Hiển Thị (Dùng cho PNG / PDF / Excel & Guest)</label>
+                        <label className="block text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider mb-2">
+                          Tên Xuất Báo Cáo / Tên Hiển Thị (Dùng cho PNG / PDF /
+                          Excel & Guest)
+                        </label>
                         <input
                           type="text"
                           placeholder="Ví dụ: Nhi, Thuận, Dũng, Hảo (Được dùng khi xuất file)"
@@ -1198,30 +1680,50 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
                           className="w-full px-4 py-2.5 text-sm bg-slate-50 dark:bg-slate-950/60 border border-indigo-200 dark:border-indigo-900/50 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors"
                         />
                         <p className="text-[10px] text-indigo-600 dark:text-indigo-400 mt-1 font-semibold">
-                          🔒 Admin thấy Họ & Tên đầy đủ. Khi xuất PNG/PDF/Excel hoặc cho khách xem, hệ thống CHỈ dùng tên này ("{editExportName || getExportName(editName)}").
+                          🔒 Admin thấy Họ & Tên đầy đủ. Khi xuất PNG/PDF/Excel
+                          hoặc cho khách xem, hệ thống CHỈ dùng tên này ("
+                          {editExportName || getExportName(editName)}").
                         </p>
                       </div>
 
                       <div>
-                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Chức Vụ</label>
+                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
+                          Chức Vụ
+                        </label>
                         <select
                           value={editRole}
                           onChange={(e) => setEditRole(e.target.value)}
                           className="w-full px-4 py-2.5 text-sm bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors"
                         >
                           {[
-                            "Nhân viên", "Trưởng phòng", "Editor", "Designer", "Intern", 
-                            "3D Generalist", "Developer", "Project Manager", "HR Manager", 
-                            "Video Editor", "Animator", "Marketing Specialist", "Business Analyst"
-                          ].map(role => (
-                            <option key={role} value={role} className="bg-white text-slate-900 dark:bg-slate-900 dark:text-white">
+                            "Nhân viên",
+                            "Trưởng phòng",
+                            "Editor",
+                            "Designer",
+                            "Intern",
+                            "3D Generalist",
+                            "Developer",
+                            "Project Manager",
+                            "HR Manager",
+                            "Video Editor",
+                            "Animator",
+                            "Marketing Specialist",
+                            "Business Analyst",
+                          ].map((role) => (
+                            <option
+                              key={role}
+                              value={role}
+                              className="bg-white text-slate-900 dark:bg-slate-900 dark:text-white"
+                            >
                               {role}
                             </option>
                           ))}
                         </select>
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Bộ Phận</label>
+                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
+                          Bộ Phận
+                        </label>
                         <input
                           type="text"
                           list="edit-dept-list"
@@ -1231,14 +1733,17 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
                           className="w-full px-4 py-2.5 text-sm bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors"
                         />
                         <datalist id="edit-dept-list">
-                          {departments.map(d => <option key={d} value={d} />)}
+                          {departments.map((d) => (
+                            <option key={d} value={d} />
+                          ))}
                         </datalist>
                       </div>
-                      
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Ngày Vào Làm</label>
+                          <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
+                            Ngày Vào Làm
+                          </label>
                           <DatePicker
                             required
                             value={editRegisteredAt}
@@ -1247,7 +1752,9 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
                         </div>
 
                         <div>
-                          <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Ngày Rời Khỏi (Để trống nếu còn làm)</label>
+                          <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
+                            Ngày Rời Khỏi (Để trống nếu còn làm)
+                          </label>
                           <DatePicker
                             value={editLeftAt}
                             onChange={(val) => setEditLeftAt(val)}
@@ -1261,10 +1768,14 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
                       <div className="bg-pink-50/10 dark:bg-pink-950/10 p-4 rounded-2xl border border-pink-100/20 dark:border-pink-900/20 space-y-2.5 text-left">
                         <div className="flex items-center gap-2 pb-1.5 border-b border-pink-100/10 dark:border-pink-900/10 animate-pulse">
                           <span className="text-sm">🎂</span>
-                          <h4 className="text-xs font-extrabold text-pink-600 dark:text-pink-400 uppercase tracking-wider">Thông Tin Sinh Nhật Riêng Tư (🔒)</h4>
+                          <h4 className="text-xs font-extrabold text-pink-600 dark:text-pink-400 uppercase tracking-wider">
+                            Thông Tin Sinh Nhật Riêng Tư (🔒)
+                          </h4>
                         </div>
                         <div>
-                          <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Ngày sinh nhật (Ví dụ: 15/09)</label>
+                          <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
+                            Ngày sinh nhật (Ví dụ: 15/09)
+                          </label>
                           <input
                             type="text"
                             placeholder="Nhập ngày sinh nhật (Ví dụ: 15/09)"
@@ -1273,7 +1784,8 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
                             className="w-full px-4 py-2 text-sm bg-white dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-400 text-slate-800 dark:text-slate-100 transition-colors"
                           />
                           <p className="text-[10px] text-pink-600/80 dark:text-pink-400/85 mt-1.5 leading-relaxed font-sans">
-                            🔒 Chỉ lưu ở trình duyệt của riêng bạn. Không lưu lên Google Sheets.
+                            🔒 Chỉ lưu ở trình duyệt của riêng bạn. Không lưu
+                            lên Google Sheets.
                           </p>
                         </div>
                       </div>
@@ -1285,22 +1797,31 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
                       <div className="bg-slate-50 dark:bg-slate-950/40 p-4 rounded-2xl border border-slate-100 dark:border-slate-800/80 space-y-3">
                         <div className="flex items-center gap-2 pb-1.5 border-b border-slate-100 dark:border-slate-800/60">
                           <span className="text-sm">⚙️</span>
-                          <h4 className="text-xs font-extrabold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">Cấu Hình Ngày Phép Nghỉ</h4>
+                          <h4 className="text-xs font-extrabold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
+                            Cấu Hình Ngày Phép Nghỉ
+                          </h4>
                         </div>
-                        
+
                         <div>
-                          <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Điều Chỉnh Số Ngày Phép (+ hoặc -)</label>
+                          <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
+                            Điều Chỉnh Số Ngày Phép (+ hoặc -)
+                          </label>
                           <input
                             type="number"
                             placeholder="Ví dụ: +5 hoặc -2"
                             value={editLeaveCarryover}
-                            onChange={(e) => setEditLeaveCarryover(e.target.value)}
+                            onChange={(e) =>
+                              setEditLeaveCarryover(e.target.value)
+                            }
                             min="-100"
                             max="100"
                             className="w-full px-4 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 text-slate-800 dark:text-slate-100 transition-colors"
                           />
                           <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
-                            Gõ <b className="text-emerald-600 font-bold">+5</b> để cộng thêm, <b className="text-rose-600 font-bold">-2</b> để trừ bớt phép. Để trống để hệ thống tự tính.
+                            Gõ <b className="text-emerald-600 font-bold">+5</b>{" "}
+                            để cộng thêm,{" "}
+                            <b className="text-rose-600 font-bold">-2</b> để trừ
+                            bớt phép. Để trống để hệ thống tự tính.
                           </p>
                         </div>
                       </div>
@@ -1309,12 +1830,23 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
                       <div className="bg-slate-50 dark:bg-slate-950/40 p-4 rounded-2xl border border-slate-100 dark:border-slate-800/80 space-y-3">
                         <div className="flex items-center gap-2 pb-1.5 border-b border-slate-100 dark:border-slate-800/60">
                           <span className="text-xs">📌</span>
-                          <h4 className="text-xs font-extrabold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">Lưu Ý Quan Trọng</h4>
+                          <h4 className="text-xs font-extrabold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
+                            Lưu Ý Quan Trọng
+                          </h4>
                         </div>
                         <ul className="text-[11px] text-slate-500 dark:text-slate-400 space-y-2 list-disc list-inside leading-relaxed">
-                          <li>Thay đổi tên hoặc chức vụ sẽ đồng bộ trực tiếp lên hệ thống quản lý Google Sheets chính thức.</li>
-                          <li>Ngày nghỉ việc (nếu có) sẽ tự động ngưng tính lương và chấm công của nhân viên kể từ ngày chỉ định.</li>
-                          <li>Ngày phép điều chỉnh được tính thêm/trừ đi trên tổng số ngày phép năm tiêu chuẩn của nhân viên.</li>
+                          <li>
+                            Thay đổi tên hoặc chức vụ sẽ đồng bộ trực tiếp lên
+                            hệ thống quản lý Google Sheets chính thức.
+                          </li>
+                          <li>
+                            Ngày nghỉ việc (nếu có) sẽ tự động ngưng tính lương
+                            và chấm công của nhân viên kể từ ngày chỉ định.
+                          </li>
+                          <li>
+                            Ngày phép điều chỉnh được tính thêm/trừ đi trên tổng
+                            số ngày phép năm tiêu chuẩn của nhân viên.
+                          </li>
                         </ul>
                       </div>
                     </div>
@@ -1366,4 +1898,3 @@ export default function EmployeesTab({ accessToken, employees, onEmployeeAdded, 
     </div>
   );
 }
-

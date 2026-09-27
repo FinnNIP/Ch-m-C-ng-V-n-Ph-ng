@@ -8,12 +8,13 @@ export interface Employee {
   rowIndex?: number; // Vị trí dòng trên Google Sheet để chỉnh sửa/xóa
   leaveAllowance?: number; // Quỹ phép năm được cấp
   leaveCarryover?: number; // Phép gối đầu (tồn) từ năm trước
+  dateOfBirth?: string; // Ngày Sinh (DD/MM/YYYY)
 }
 
 export interface TimeLog {
   employeeName: string; // Họ Và Tên
   date: string; // YYYY-MM-DD
-  status: 'Có đi làm' | 'Không đi làm' | 'Nghỉ phép';
+  status: 'Có đi làm' | 'Không đi làm' | 'Nghỉ phép' | 'Nghỉ lễ';
   otFrom: string; // Giờ bắt đầu OT (e.g. "18:00")
   otTo: string; // Giờ kết thúc OT (e.g. "21:30")
   note: string; // Ghi chú
@@ -22,7 +23,7 @@ export interface TimeLog {
 
 export interface DailyStatus {
   date: string;
-  status: 'Có đi làm' | 'Không đi làm' | 'Nghỉ phép' | 'Nghỉ cuối tuần' | 'Ngày lễ' | 'Chưa vào làm' | 'Đã nghỉ việc';
+  status: 'Có đi làm' | 'Không đi làm' | 'Nghỉ phép' | 'Nghỉ lễ' | 'Nghỉ cuối tuần' | 'Ngày lễ' | 'Chưa vào làm' | 'Đã nghỉ việc';
   otFrom: string;
   otTo: string;
   note: string;
