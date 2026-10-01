@@ -196,6 +196,12 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
+  // API Route: Client Error Logger
+  app.post("/api/client-error", (req, res) => {
+    console.error("[CLIENT_ERROR_REPORT]", JSON.stringify(req.body, null, 2));
+    res.json({ status: "logged" });
+  });
+
   // API Route: Get state (Admin, Accountant, Guest, Employee)
   app.get("/api/app-state", (req, res) => {
     const { role, key, email } = req.query;
@@ -476,6 +482,12 @@ Lưu ý:
       console.error("Lỗi trợ lý AI:", error);
       res.status(500).json({ error: "Lỗi hệ thống khi kết nối trợ lý AI: " + error.message });
     }
+  });
+
+  // Serve public directory (favicons, static assets)
+  app.use(express.static(path.join(process.cwd(), "public")));
+  app.get("/favicon.ico", (req, res) => {
+    res.type("image/svg+xml").sendFile(path.join(process.cwd(), "public", "favicon.svg"));
   });
 
   // Vite middleware for development

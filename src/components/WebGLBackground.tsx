@@ -20,7 +20,8 @@ import {
   MousePointer,
   Compass,
   Radio,
-  Sparkle
+  Sparkle,
+  Shuffle
 } from 'lucide-react';
 import { WebGLPointCloud } from './WebGLPointCloud';
 
@@ -56,6 +57,24 @@ const FRAGMENT_SHADER_SOURCE = `
   uniform float u_shockwave_intensity;
   uniform vec3 u_impact_color;
   uniform vec3 u_river_color;
+  uniform float u_dither_strength;
+  uniform float u_dither_scale;
+  uniform float u_ink_intensity;
+
+  // Authentic 8x8 Bayer Ordered Dithering Matrix (Analytical recursive formula)
+  float bayer2(vec2 p) {
+      float x = mod(p.x, 2.0);
+      float y = mod(p.y, 2.0);
+      return (y < 1.0) ? ((x < 1.0) ? 0.0 : 2.0) : ((x < 1.0) ? 3.0 : 1.0);
+  }
+
+  float bayer4(vec2 p) {
+      return 4.0 * bayer2(p) + bayer2(floor(p * 0.5));
+  }
+
+  float bayer8(vec2 p) {
+      return (4.0 * bayer4(p) + bayer2(floor(p * 0.25))) / 64.0;
+  }
 
   float hash(vec2 p) {
       return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
@@ -85,13 +104,13 @@ const FRAGMENT_SHADER_SOURCE = `
   vec3 getAurora(vec2 uv, float t) {
       if (uv.y < -1.8) return vec3(0.0);
       
-      // Vertical fade - lowered gracefully to wave across mid-sky right behind mountain crests
-      float fade = smoothstep(-1.5, 0.15, uv.y) * smoothstep(4.0, 1.6, uv.y);
+      // Vertical fade - gracefully arched across mid-to-high sky behind mountain crests
+      float fade = smoothstep(-0.6, 0.9, uv.y) * smoothstep(3.8, 2.0, uv.y);
       if (fade <= 0.0) return vec3(0.0);
 
       vec3 auroraColor = vec3(0.0);
       
-      // Overlapping dynamic layers with distinct frequency, speed and colors
+      // Dynamic organic curtains with distinct folds and streamers
       for (float i = 0.0; i < 3.0; i++) {
           float shift = i * 2.54;
           float speedFactor = 0.28 + i * 0.15;
@@ -105,7 +124,9 @@ const FRAGMENT_SHADER_SOURCE = `
           // Fine vertical rays simulating light streamers
           float ray = noise(vec2(uv.x * 6.0 + sin(t * 0.22 + i * 1.5) * 3.5, uv.y * 0.05 + t * 0.02));
           
-          float strength = smoothstep(0.18, 0.75, noiseVal) * (0.2 + 0.8 * ray);
+          // Silky translucent curtain folds leaving clear gaps so celestial stars shine through
+          float curtain = smoothstep(0.28, 0.76, noiseVal);
+          float strength = pow(curtain, 1.45) * (0.30 + 0.70 * ray);
           
           // Custom Aurora Color Spectrum from uniforms
           vec3 col = vec3(0.0);
@@ -115,10 +136,10 @@ const FRAGMENT_SHADER_SOURCE = `
               col = u_aurora_col2;
           } else {
               col = u_aurora_col3;
-              strength *= smoothstep(-0.5, 2.5, uv.y); // High altitude fade extension
+              strength *= smoothstep(-0.2, 2.2, uv.y); // High altitude fade extension
           }
           
-          auroraColor += col * strength * fade * 0.45;
+          auroraColor += col * strength * fade * 0.26;
       }
       
       return auroraColor;
@@ -138,23 +159,9 @@ const FRAGMENT_SHADER_SOURCE = `
       st *= 5.0;
       vec2 unwarped_st = st; // Pristine, rock-steady celestial coordinates for background stars, moon & sky
 
-      // --- LOCALIZED TERRAIN SHOCKWAVE DISTORTION ---
-      // Energetic impact distortion applied ONLY to local terrain & river, NEVER to sky or celestial stars!
+      // Localized terrain coordinates (stable, peaceful, no harsh circular distortion rings)
       vec3 shockwaveColorFlash = vec3(0.0);
       vec2 terrain_st = st;
-      if (u_shockwave_intensity > 0.002) {
-          vec2 toImpact = st - u_impact_pos;
-          float distImp = length(toImpact);
-          float ringDist = abs(distImp - u_shockwave_radius);
-          float ringThickness = 0.40;
-          
-          if (ringDist < ringThickness && distImp < 2.8) {
-              float wave = sin((1.0 - ringDist / ringThickness) * 3.14159);
-              vec2 warpDir = normalize(toImpact + vec2(0.0001));
-              terrain_st += warpDir * wave * 0.06 * u_shockwave_intensity;
-              shockwaveColorFlash = mix(u_impact_color, vec3(0.95, 0.98, 1.0), 0.35) * wave * u_shockwave_intensity * 0.30;
-          }
-      }
 
       // Cursor ambient soft neon illumination (whisper-soft and gentle)
       float cursorGlow = 0.006 / (distToMouseRaw * distToMouseRaw * 180.0 + 0.08);
@@ -269,52 +276,90 @@ const FRAGMENT_SHADER_SOURCE = `
       // Mountain Ridge A (Deep background mountain - slow celestial drift)
       float ridgeA = fbm(vec2(stM.x * 0.20 + 0.3 + t * 0.022, 1.5)) * 12.9 - 2.18;
       float aboveA  = stM.y - ridgeA;
-      float alphaA  = smoothstep(0.04, -0.04, aboveA);
+      float alphaA  = smoothstep(0.015, -0.015, aboveA);
       
-      // Ridge A: Sleek dark nocturnal silhouette with vivid glowing Primary Neon crest stroke
-      vec3 mountainBaseA = mix(
-          vec3(0.88, 0.92, 0.98), 
-          vec3(0.008, 0.012, 0.022), 
-          u_is_dark
-      );
+      // Ridge A: Exactly ONE crisp, single razor stroke outlining the crest rim
+      float strokeA = exp(-abs(aboveA) * 44.0) * 1.45;
+      vec3 rimA = u_neon_color * strokeA * u_neon_intensity;
+      rimA += meteorReflectColor * strokeA * 0.30;
 
-      float strokeA_razor = exp(-abs(aboveA) * 36.0) * 1.30;
-      float strokeA_glow  = exp(-abs(aboveA) * 9.0) * 0.45;
-      float crestGradientA = strokeA_razor + strokeA_glow;
-      vec3 meteorReflectionA = meteorReflectColor * strokeA_glow * 0.40;
+      // --- SPARSE RETRO HALFTONE ORDERED DITHERING (RIDGE A) ---
+      float slopeA = max(0.0, -aboveA);
+      // Strictly confine dither to upper mountain slope (zero dots anywhere else!)
+      float ditherZoneA = smoothstep(0.48, 0.02, slopeA) * smoothstep(0.015, 0.05, slopeA);
+      float facetA = sin(stM.x * 2.2 + slopeA * 1.2) * 0.5 + 0.5;
+      
+      // Delicate gradient just below the crest, fading quickly so mountain body is pure deep black
+      float lightA = exp(-slopeA * 2.6) * (0.12 + 0.58 * facetA);
 
-      // Pure glowing colored neon stroke on Ridge A (Primary Color)
-      vec3 rimA = (u_neon_color * crestGradientA * 1.10 * u_neon_intensity + meteorReflectionA) * smoothstep(0.08, -0.02, aboveA);
-      vec3 colA = mountainBaseA + rimA;
+      // Halftone screen rotated 45 degrees:
+      float htSpacingA = max(5.0, u_dither_scale * 3.6);
+      vec2 htPosA = (vec2(gl_FragCoord.x + gl_FragCoord.y, gl_FragCoord.y - gl_FragCoord.x) * 0.7071) / htSpacingA;
+      vec2 htCellA = fract(htPosA) - 0.5;
+      float dotDistA = length(htCellA);
+
+      // Sparse halftone dots: capped at 0.35 radius so dots stay isolated and sparse (thưa thớt)
+      float dotRadiusA = sqrt(lightA) * 0.35;
+      float htDotA = smoothstep(dotRadiusA, dotRadiusA - 0.07, dotDistA);
+
+      // Bayer 8x8 with a solid positive offset so (0,0) never produces stray dots when light is 0
+      float bayerA = bayer8(gl_FragCoord.xy / max(1.0, u_dither_scale));
+      float bayerDotA = step(bayerA + 0.04, lightA * 0.45);
+
+      // Combined sparse halftone dither (strictly zero outside ditherZoneA!)
+      float ditherPatternA = max(htDotA, bayerDotA * 0.6) * ditherZoneA;
+
+      // Neon halftone dots matching the single stroke's color (u_neon_color):
+      vec3 ditherA = u_neon_color * ditherPatternA * u_dither_strength * u_neon_intensity;
+
+      // Pitch black mountain body in dark mode:
+      vec3 darkMountainBaseA = mix(vec3(0.0, 0.0, 0.001), vec3(0.92, 0.94, 0.98), 1.0 - u_is_dark);
+      vec3 colA = darkMountainBaseA + rimA + ditherA;
 
       // Mountain Ridge B (Foreground mountain - natural gentle drift)
       float ridgeB = fbm(vec2(stM.x * 0.31 + 5.7 + t * 0.045, 3.2)) * 5.4 - 0.9;
       float aboveB  = stM.y - ridgeB;
-      float alphaB  = smoothstep(0.04, -0.04, aboveB);
+      float alphaB  = smoothstep(0.015, -0.015, aboveB);
       
-      // Ridge B: Sleek dark nocturnal silhouette with vivid glowing Secondary Neon crest stroke
-      vec3 mountainBaseB = mix(
-          vec3(0.82, 0.88, 0.96),
-          vec3(0.006, 0.010, 0.018), 
-          u_is_dark
-      );
+      // Ridge B: Exactly ONE crisp, single razor stroke outlining the crest rim
+      float strokeB = exp(-abs(aboveB) * 44.0) * 1.45;
+      vec3 rimB = u_neon_color2 * strokeB * u_neon_intensity;
+      rimB += meteorReflectColor * strokeB * 0.25;
 
-      float strokeB_razor = exp(-abs(aboveB) * 36.0) * 1.30;
-      float strokeB_glow  = exp(-abs(aboveB) * 9.0) * 0.45;
-      float crestGradientB = strokeB_razor + strokeB_glow;
-      vec3 meteorReflectionB = meteorReflectColor * strokeB_glow * 0.35;
+      // --- SPARSE RETRO HALFTONE ORDERED DITHERING (RIDGE B) ---
+      float slopeB = max(0.0, -aboveB);
+      // Strictly confine dither to upper mountain slope (zero dots anywhere else!)
+      float ditherZoneB = smoothstep(0.48, 0.02, slopeB) * smoothstep(0.015, 0.05, slopeB);
+      float facetB = sin(stM.x * 2.6 - slopeB * 1.4) * 0.5 + 0.5;
+      
+      float lightB = exp(-slopeB * 2.8) * (0.12 + 0.58 * facetB);
 
-      // Pure glowing colored neon stroke on Ridge B (Secondary Color)
-      vec3 rimB = (u_neon_color2 * crestGradientB * 1.10 * u_neon_intensity + meteorReflectionB) * smoothstep(0.08, -0.02, aboveB);
-      vec3 colB = mountainBaseB + rimB;
+      // Halftone screen rotated -30 degrees for Ridge B:
+      float htSpacingB = max(5.5, u_dither_scale * 4.0);
+      vec2 htPosB = (vec2(gl_FragCoord.x * 0.866 - gl_FragCoord.y * 0.5, gl_FragCoord.x * 0.5 + gl_FragCoord.y * 0.866) + vec2(17.4, 31.9)) / htSpacingB;
+      vec2 htCellB = fract(htPosB) - 0.5;
+      float dotDistB = length(htCellB);
 
-      // Subtle, poetic cursor sweep bloom on mountain crest
+      float dotRadiusB = sqrt(lightB) * 0.35;
+      float htDotB = smoothstep(dotRadiusB, dotRadiusB - 0.07, dotDistB);
+
+      float bayerB = bayer8((gl_FragCoord.xy + vec2(4.0, 4.0)) / max(1.0, u_dither_scale));
+      float bayerDotB = step(bayerB + 0.04, lightB * 0.45);
+
+      float ditherPatternB = max(htDotB, bayerDotB * 0.6) * ditherZoneB;
+      vec3 ditherB = u_neon_color2 * ditherPatternB * u_dither_strength * u_neon_intensity;
+
+      // Pitch black mountain body in dark mode:
+      vec3 darkMountainBaseB = mix(vec3(0.0, 0.0, 0.001), vec3(0.88, 0.91, 0.96), 1.0 - u_is_dark);
+      vec3 colB = darkMountainBaseB + rimB + ditherB;
+
+      // Subtle cursor sweep glint on mountain single crest stroke
       float topRidgeScreenY = max(ridgeA, ridgeB) - 2.5;
       float distCursorToCrest = abs(mouse_st.y - topRidgeScreenY);
       float horizDistCursor = abs(stM.x - mouse_st.x);
-      float cursorSweepBloom = exp(-horizDistCursor * 1.8) * exp(-distCursorToCrest * 2.5) * (0.85 + 0.35 * sin(u_time * 5.0));
-      colA += u_neon_color * cursorSweepBloom * 0.45 * strokeA_glow;
-      colB += u_neon_color2 * cursorSweepBloom * 0.45 * strokeB_glow;
+      float cursorSweepGlint = exp(-horizDistCursor * 2.0) * exp(-distCursorToCrest * 3.0) * (0.8 + 0.2 * sin(u_time * 5.0));
+      colA += u_neon_color * cursorSweepGlint * 0.35 * strokeA;
+      colB += u_neon_color2 * cursorSweepGlint * 0.35 * strokeB;
 
       // Background Celestial Stars: Gentle Sine Pulsing & Twinkling with Soft Central Glow (Rock-steady, NO jitter!)
       vec2 skySt = unwarped_st;
@@ -355,11 +400,11 @@ const FRAGMENT_SHADER_SOURCE = `
       vec3 col = skyBase;
       col += starColorSum * 0.55 * starMask;
 
-      // Aurora Borealis layer - gracefully lowered to sweep across the sky above and behind the mountain crests (soft ethereal silk)
-      vec3 auroraCol = getAurora(unwarped_st - vec2(0.0, 0.25), t) * u_is_dark * (u_aurora_intensity * 0.85) * (1.0 - mountainMask);
+      // Aurora Borealis layer - gracefully draped in translucent silk, vibrant yet harmonious (never blinding)
+      vec3 auroraCol = getAurora(unwarped_st - vec2(0.0, 0.25), t) * u_is_dark * (u_aurora_intensity * 0.70) * (1.0 - mountainMask);
       col += auroraCol;
 
-      // --- CELESTIAL REAL-WORLD MOON WITH AUTO-UPDATING LUNAR PHASE ---
+      // --- CELESTIAL REAL-WORLD MOON WITH ORDERED DITHERING & AUTO LUNAR PHASE ---
       float moonArcAngle = 0.88 + sin(t * 0.005) * 0.26;
       float moonArcRadius = 4.6;
       vec2 moonOrbitCenter = vec2(0.2, -0.9);
@@ -374,6 +419,8 @@ const FRAGMENT_SHADER_SOURCE = `
       vec3 moonSurfaceColor = vec3(0.0);
       float moonIllum = 0.0;
 
+      float bayerMoon = bayer8(gl_FragCoord.xy / max(1.0, u_dither_scale));
+
       if (rDist <= 1.0) {
           float zNorm = sqrt(max(0.0, 1.0 - rDist * rDist));
           vec3 N = vec3(mNorm.x, mNorm.y, zNorm);
@@ -382,112 +429,122 @@ const FRAGMENT_SHADER_SOURCE = `
           vec3 L = vec3(-sin(sunAngle), 0.0, -cos(sunAngle));
 
           float NdotL = dot(N, L);
-          float sunlit = smoothstep(-0.04, 0.04, NdotL);
+          
+          // ORDERED DITHERING ON LUNAR TERMINATOR & CRATERS (Bayer 8x8 Stippling)
+          float ditherOffset = (bayerMoon - 0.5) * 0.42 * u_dither_strength;
+          float sunlitSmooth = smoothstep(-0.04, 0.04, NdotL);
+          float sunlitDithered = smoothstep(-0.20, 0.20, NdotL + ditherOffset);
+          float sunlit = mix(sunlitSmooth, sunlitDithered, u_dither_strength);
           
           float crater = noise(mNorm * 6.5) * 0.16 + noise(mNorm * 16.0) * 0.08;
+          float ditherCrater = crater + (bayerMoon - 0.5) * 0.10 * u_dither_strength;
           
-          vec3 sunlitColor = mix(vec3(0.98, 0.96, 0.92), vec3(0.96, 0.91, 0.78), crater * 1.5);
-          vec3 earthshineColor = vec3(0.03, 0.05, 0.10) * (1.0 - crater * 0.5);
+          vec3 sunlitColor = mix(vec3(0.98, 0.96, 0.92), vec3(0.96, 0.91, 0.78), ditherCrater * 1.5);
+          vec3 earthshineColor = vec3(0.03, 0.05, 0.10) * (1.0 - ditherCrater * 0.5);
           float diskEdge = smoothstep(1.0, 0.94, rDist);
           
           moonSurfaceColor = mix(earthshineColor, sunlitColor, sunlit) * diskEdge;
           moonIllum = sunlit;
       }
 
-      // Dynamic Real-time Lunar Corona & Aureole (gentle, poetic starlight, never blinding)
+      // Dynamic Real-time Lunar Corona & Aureole with Concentric Ordered Dither Halftone Rings
       float phaseIllum = 0.5 * (1.0 - cos(u_moon_phase * 6.2831853));
       float moonCorona = (0.020 + 0.025 * phaseIllum) / (dMoon * dMoon * 4.5 + 0.18);
       float moonAureole = exp(-dMoon * 1.8) * (0.08 + 0.10 * phaseIllum);
       float moonHaze = exp(-dMoon * 0.75) * (0.04 + 0.06 * phaseIllum);
 
+      // Concentric ordered dither halftone stipple rings around moon (vintage celestial engraving)
+      float ringFreq = dMoon * 14.0;
+      float ringStipple = (sin(ringFreq) * 0.5 + 0.5);
+      float ditherHalo = step(bayerMoon, (moonAureole * 3.8 + ringStipple * 0.14) * u_dither_strength);
+      vec3 moonHaloStipple = vec3(0.98, 0.95, 0.85) * ditherHalo * 0.040 * smoothstep(2.5, 0.4, dMoon) * u_dither_strength;
+
       vec3 moonGlowTint = mix(vec3(0.98, 0.92, 0.78), vec3(0.65, 0.82, 0.98), smoothstep(0.3, 2.5, dMoon));
       vec3 moonTotalLight = moonSurfaceColor * 0.95 + 
-                            moonGlowTint * (moonCorona * 0.40 + moonAureole * 0.35 + moonHaze * 0.20);
+                            moonGlowTint * (moonCorona * 0.40 + moonAureole * 0.35 + moonHaze * 0.20) +
+                            moonHaloStipple;
 
       col += moonTotalLight * u_is_dark * (1.0 - mountainMask);
       col += meteorSkyLight * u_is_dark * (1.0 - mountainMask);
 
-      // --- ETHEREAL TOPOGRAPHIC CONTOUR RIVER (Contour & Topographic isolines) ---
-      // River flows gracefully below Mountain Ridge B in the foreground
-      float riverBankY = ridgeB * 0.42 - 0.35;
-      float riverWaterMask = smoothstep(0.12, -0.12, stM.y - riverBankY);
+      // --- POETIC CELESTIAL TOPOGRAPHY & MOONLIT RIVER (CLEAN, ZEN, CRYSTALLINE) ---
+      // River valley bed nestled peacefully at the foot of the pitch-black mountains
+      float riverValleyY = ridgeB * 0.35 - 0.40;
+      float riverDepthFactor = clamp((-stM.y + 0.8) * 0.45, 0.05, 1.8);
+      float waterPerspective = 1.0 / (riverDepthFactor + 0.30);
+      float riverWaterMask = smoothstep(0.05, -0.45, stM.y - riverValleyY);
       
-      float waterDepth = clamp((-stM.y + 1.2) * 0.38, 0.10, 2.2);
-      float waterPerspective = 1.0 / (waterDepth + 0.20);
+      float waveTime = t * 0.30;
       
-      // Gentle, soothing flow rate for topographic contours
-      float waveTime = t * 0.45;
-      
-      // Topographic heightfield coordinates with smooth perspective
-      vec2 topoUV = vec2(stM.x * 1.35 * waterPerspective * 0.35 + waveTime * 0.10, stM.y * 3.2 - waveTime * 0.14);
-      
-      // Organic domain-warped elevation field (smooth, continuous, non-aliasing topographic contours)
-      float elev1 = fbm(topoUV);
-      float elev2 = fbm(topoUV * 1.6 + vec2(elev1 * 0.75, waveTime * 0.08));
-      float elevation = elev1 * 0.62 + elev2 * 0.38;
-      
-      // 14 glowing topographic contour elevation isolines across the river surface:
-      float levels = 13.0;
-      float scaledElev = elevation * levels;
-      float dContour = abs(fract(scaledElev) - 0.5); // distance to nearest isoline [0..0.5]
-      
-      // Slender razor-crisp starlight filament core:
-      float lineCore = smoothstep(0.065, 0.0, dContour);
-      
-      // Soft radiant neon aura around each contour line (gentle, harmonious, non-blinding):
-      float lineGlow = exp(-dContour * 12.0) * 0.38;
-      float lineHalo = exp(-dContour * 5.0) * 0.12;
-      float topoLineIntensity = lineCore * 0.60 + lineGlow + lineHalo;
-      
-      // Alternating elevation tier nuance (graceful color nuances across contour levels):
-      float tier = 0.5 + 0.5 * sin(floor(scaledElev) * 1.57);
-      vec3 contourTierColor = mix(u_river_color, u_neon_color2, tier * 0.22);
-      
-      // Luminous fiber-optic core (diamond-starlight highlight on the line core):
-      vec3 topoLineColor = mix(contourTierColor, vec3(0.92, 0.96, 1.0), lineCore * 0.35) * topoLineIntensity;
-      topoLineColor *= (0.50 + 0.35 * u_neon_intensity);
-      
-      // Deep nocturnal crystalline abyss base (sleek, dark, elegant - NOT thick, muddy, or heavy):
-      vec3 riverBaseColor = mix(
-          vec3(0.92, 0.96, 0.99), 
-          vec3(0.005, 0.010, 0.022) + u_river_color * 0.03 * u_neon_intensity, 
-          u_is_dark
+      // Deep midnight obsidian crystalline water basin
+      vec3 riverBasin = mix(
+          vec3(0.001, 0.003, 0.008), 
+          vec3(0.004, 0.016, 0.035) + u_river_color * 0.035, 
+          smoothstep(0.0, 1.5, riverDepthFactor)
       );
-      
-      vec2 waterReflCoord = vec2(stM.x, -stM.y * 0.75 + 0.35);
-      
-      // Reflected Aurora Borealis dancing gently in the river (soft ethereal wash)
-      vec3 reflAurora = getAurora(waterReflCoord - vec2(0.0, 0.25), t) * 0.32 * u_aurora_intensity * u_is_dark;
-      
-      // Reflected Mountain Neon Rim glow shimmering on water surface
-      float reflRimLight = exp(-abs(waterReflCoord.y - 1.0) * 1.5) * 0.25;
-      vec3 reflMountainGlow = mix(u_neon_color, u_neon_color2, 0.5 + 0.5 * sin(stM.x * 0.5)) * reflRimLight * 0.40 * u_neon_intensity;
-      
-      // Specular Celestial Moon Path reflection shimmering downstream (lấp lánh vảy bạc êm dịu, không chói)
-      float moonDistX = abs(stM.x - moonPos.x);
-      float moonColumn = exp(-pow(moonDistX / 1.45, 2.0));
-      float moonShimmer = moonColumn * pow(max(0.0, sin(stM.y * 18.0 * waterPerspective * 0.25 + waveTime * 1.8)), 4.0);
-      vec3 moonReflectionWater = vec3(0.96, 0.94, 0.88) * (moonShimmer * 0.32 + moonColumn * 0.05) * (0.30 + 0.5 * phaseIllum);
-      
-      // Soft misty shoreline glow where river kisses the mountain base
-      float shoreDist = abs(stM.y - riverBankY);
-      float shoreMist = exp(-shoreDist * 5.0) * 0.35;
-      vec3 shoreGlow = mix(u_river_color, vec3(0.70, 0.88, 1.0), 0.30) * shoreMist * (u_neon_intensity * 0.55);
-      
-      // Final Ethereal Topographic River Composition - light, airy, elegant, glowing contour isolines
-      vec3 waterCol = riverBaseColor + 
-                      topoLineColor + 
-                      reflAurora + 
-                      reflMountainGlow + 
-                      moonReflectionWater + 
-                      shoreGlow;
 
-      // Composite Mountains (Rendered on top of 3D meteors!)
+      // Smooth elevation coordinate with gentle mouse ripple wake (zen water ripples)
+      vec2 topoUV = vec2(stM.x * 0.32 * waterPerspective + waveTime * 0.04, stM.y * 1.5 - waveTime * 0.03);
+      vec2 toMouse = stM - mouse_st;
+      float mDist = length(toMouse);
+      float mRipple = sin(mDist * 14.0 - t * 3.5) * exp(-mDist * 2.8) * 0.08;
+      topoUV += vec2(mRipple * 0.4, mRipple);
+
+      // Pristine, smooth topographic elevation field (clean, organic, no chaotic curl noise)
+      float elev = fbm(topoUV) * 0.65 + fbm(topoUV * 1.8 + vec2(1.2, 0.7)) * 0.25;
+      
+      // 10 distinct, serene elevation contour isolines
+      float levels = 10.0;
+      float scaledElev = elev * levels;
+      float dContour = abs(fract(scaledElev) - 0.5);
+      
+      // Major index contours (every 5th line has a bolder starlight accent)
+      float isMajorLine = smoothstep(0.35, 0.0, abs(fract(scaledElev / 5.0) - 0.5) * 5.0);
+      
+      // Laser-fine, crisp luminous core
+      float lineCore = smoothstep(0.024, 0.002, dContour);
+      float lineAura = exp(-dContour * 16.0) * 0.25;
+      float topoLineIntensity = lineCore * 0.85 + lineAura + isMajorLine * lineCore * 0.45;
+      
+      // Pure, ethereal starlight cyan / champagne gold contour color
+      vec3 baseTopoColor = mix(u_river_color, vec3(0.85, 0.96, 1.0), 0.45);
+      vec3 topoLineColor = baseTopoColor * topoLineIntensity * (0.65 + 0.35 * u_neon_intensity) * u_ink_intensity;
+
+      // Specular moonbeam reflection column along the vertical path under the moon
+      float moonDistX = abs(stM.x - moonPos.x);
+      float moonColumn = exp(-pow(moonDistX / 1.4, 2.0));
+      
+      // Surface ripples catching moonlight (smooth, silky, pure specular reflection - NO dither!)
+      float waterRipple = sin(stM.y * 22.0 * waterPerspective * 0.25 + waveTime * 1.8 + sin(stM.x * 3.0) * 1.5);
+      float rippleSpecular = pow(max(0.0, waterRipple), 3.5);
+      
+      vec3 moonGlintColor = mix(vec3(0.98, 0.95, 0.88), vec3(0.65, 0.88, 1.0), 0.30);
+      vec3 moonReflectionWater = moonGlintColor * (
+          moonColumn * 0.05 + 
+          rippleSpecular * moonColumn * 0.40
+      ) * (0.30 + 0.70 * phaseIllum);
+
+      // Soft ambient reflection of mountain neon rims in deep water
+      float neonReflectFade = smoothstep(-0.4, 0.4, riverDepthFactor);
+      vec3 mountainNeonReflection = (u_neon_color * 0.035 + u_neon_color2 * 0.045) * neonReflectFade * u_neon_intensity;
+      
+      // Ethereal river mist hovering softly where water meets the pitch-black mountain foot
+      float shoreMist = exp(-abs(stM.y - riverValleyY) * 4.0) * 0.35;
+      vec3 riverMistGlow = mix(u_river_color, vec3(0.7, 0.88, 1.0), 0.35) * shoreMist * (u_neon_intensity * 0.30);
+      
+      // Final poetic, crystalline river composition:
+      vec3 waterCol = riverBasin + 
+                      topoLineColor + 
+                      moonReflectionWater + 
+                      mountainNeonReflection +
+                      riverMistGlow;
+
+      // Composite Mountains (Rendered with solid opacity so mountains are deep, pure pitch black)
       col = mix(col, colA, alphaA);
       col = mix(col, colB, alphaB);
 
-      // Composite River Water in foreground
-      col = mix(col, waterCol, clamp(riverWaterMask * 0.92, 0.0, 1.0));
+      // Composite River Water in foreground (Solid 100% water body so no background mountain dots leak through)
+      col = mix(col, waterCol, riverWaterMask);
 
       // Add shockwave chromatic ring flash from impact (soft, subtle pulse, never blinding)
       col += shockwaveColorFlash;
@@ -496,7 +553,7 @@ const FRAGMENT_SHADER_SOURCE = `
       col += cursorColor * (0.85 + 0.15 * sin(u_time * 4.0));
 
       // Photographic exposure tone mapping preserving vividness, clarity, and preventing harsh blowout:
-      col = 1.0 - exp(-col * 1.15);
+      col = 1.0 - exp(-col * 1.05);
 
       gl_FragColor = vec4(col, 1.0);
   }
@@ -628,6 +685,139 @@ const hueToHex = (h: number): string => {
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 };
 
+const normalizeHex = (hex: string): string => {
+  let clean = hex.trim();
+  if (!clean.startsWith('#')) clean = '#' + clean;
+  if (/^#[0-9A-Fa-f]{6}$/.test(clean)) return clean.toLowerCase();
+  if (/^#[0-9A-Fa-f]{3}$/.test(clean)) {
+    return `#${clean[1]}${clean[1]}${clean[2]}${clean[2]}${clean[3]}${clean[3]}`.toLowerCase();
+  }
+  return '#00f2fe';
+};
+
+interface ColorFieldProps {
+  label: string;
+  sublabel?: string;
+  value: string;
+  onChange: (hex: string) => void;
+  presetSwatches?: string[];
+}
+
+const ColorField: React.FC<ColorFieldProps> = ({
+  label,
+  sublabel,
+  value,
+  onChange,
+  presetSwatches = []
+}) => {
+  const [inputVal, setInputVal] = useState(value.toUpperCase());
+
+  useEffect(() => {
+    setInputVal(value.toUpperCase());
+  }, [value]);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value.trim();
+    setInputVal(raw.toUpperCase());
+    const formatted = raw.startsWith('#') ? raw : '#' + raw;
+    if (/^#[0-9A-Fa-f]{6}$/.test(formatted)) {
+      onChange(formatted.toLowerCase());
+    } else if (/^#[0-9A-Fa-f]{3}$/.test(formatted)) {
+      const full = `#${formatted[1]}${formatted[1]}${formatted[2]}${formatted[2]}${formatted[3]}${formatted[3]}`;
+      onChange(full.toLowerCase());
+    }
+  };
+
+  const handleBlur = () => {
+    const formatted = inputVal.startsWith('#') ? inputVal : '#' + inputVal;
+    if (!/^#[0-9A-Fa-f]{6}$/.test(formatted) && !/^#[0-9A-Fa-f]{3}$/.test(formatted)) {
+      setInputVal(value.toUpperCase());
+    } else {
+      setInputVal(formatted.toUpperCase());
+    }
+  };
+
+  const safeHexForInputColor = normalizeHex(value);
+
+  return (
+    <div className="p-2.5 rounded-2xl bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200/70 dark:border-slate-800/60 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <span className="text-[11px] font-bold text-slate-800 dark:text-slate-100 block truncate">
+            {label}
+          </span>
+          {sublabel && (
+            <span className="text-[9px] text-slate-400 dark:text-slate-500 block truncate">
+              {sublabel}
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Interactive Native Color Wheel Swatch */}
+          <div className="relative group cursor-pointer" title="Bấm để mở bảng chọn màu tự do (Color Wheel)">
+            <input
+              type="color"
+              value={safeHexForInputColor}
+              onChange={(e) => {
+                onChange(e.target.value.toLowerCase());
+                setInputVal(e.target.value.toUpperCase());
+              }}
+              className="absolute inset-0 opacity-0 w-full h-full cursor-pointer z-10"
+            />
+            <div 
+              className="w-7 h-7 rounded-xl border-2 border-white/60 dark:border-slate-700 shadow-xs flex items-center justify-center transition-all group-hover:scale-110 group-hover:shadow-md cursor-pointer"
+              style={{ backgroundColor: safeHexForInputColor }}
+            >
+              <Palette className="w-3.5 h-3.5 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] opacity-90 group-hover:opacity-100" />
+            </div>
+          </div>
+
+          {/* Direct Hex Code Input */}
+          <div className="flex items-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 rounded-xl px-2 py-1 text-[10px] font-mono shadow-xs focus-within:ring-2 focus-within:ring-indigo-500/30 focus-within:border-indigo-500">
+            <span className="text-slate-400 font-bold mr-0.5 select-none">#</span>
+            <input
+              type="text"
+              value={inputVal.replace(/^#/, '')}
+              onChange={handleInputChange}
+              onBlur={handleBlur}
+              maxLength={6}
+              placeholder="00F2FE"
+              className="w-14 uppercase outline-none bg-transparent font-bold text-slate-800 dark:text-slate-100 tracking-wider"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Preset Swatches Bar */}
+      {presetSwatches.length > 0 && (
+        <div className="flex items-center justify-between gap-1 pt-0.5">
+          {presetSwatches.map((hex) => {
+            const isMatch = value.toLowerCase() === hex.toLowerCase();
+            return (
+              <button
+                key={hex}
+                type="button"
+                onClick={() => {
+                  onChange(hex.toLowerCase());
+                  setInputVal(hex.toUpperCase());
+                }}
+                title={hex}
+                className={`w-5 h-5 rounded-lg border transition-all cursor-pointer ${
+                  isMatch 
+                    ? 'ring-2 ring-indigo-500 scale-115 shadow-sm border-white' 
+                    : 'border-black/10 dark:border-white/20 hover:scale-110 hover:opacity-100 opacity-80'
+                }`}
+                style={{ backgroundColor: hex }}
+              />
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const WebGLBackground: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -711,23 +901,57 @@ export const WebGLBackground: React.FC = () => {
 
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
   const [isOpen, setIsOpen] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<'preset' | 'custom' | 'aurora' | 'pointcloud'>('preset');
+  const [activeTab, setActiveTab] = useState<'theme' | 'landscape' | 'stars'>('theme');
+  const [showCustomColors, setShowCustomColors] = useState<boolean>(false);
   const [activeAuroraColorIdx, setActiveAuroraColorIdx] = useState<1 | 2 | 3>(1);
 
   // WebGL Falling Stardust & Van Gogh Starry Sky custom state
   const [pcEnabled, setPcEnabled] = useState<boolean>(() => localStorage.getItem('pc_enabled') !== 'false');
   const [pcCount, setPcCount] = useState<number>(() => Number(localStorage.getItem('pc_count') ?? '280'));
-  const [pcSparkleSize, setPcSparkleSize] = useState<number>(() => Number(localStorage.getItem('pc_size') ?? '1.55'));
+  const [pcSparkleSize, setPcSparkleSize] = useState<number>(() => {
+    const saved = localStorage.getItem('pc_size');
+    if (!saved) return 1.40;
+    const n = Number(saved);
+    return isNaN(n) ? 1.40 : Math.max(0.3, Math.min(n, 3.5));
+  });
+  const [pcCometSize, setPcCometSize] = useState<number>(() => {
+    const saved = localStorage.getItem('pc_comet_size');
+    if (!saved) return 1.0;
+    const n = Number(saved);
+    return isNaN(n) ? 1.0 : Math.max(0.3, Math.min(n, 3.5));
+  });
   const [pcColorMode, setPcColorMode] = useState<number>(() => Number(localStorage.getItem('pc_color_mode') ?? '0'));
   const [pcSpeed, setPcSpeed] = useState<number>(() => Number(localStorage.getItem('pc_speed') ?? '0.30'));
   const [pcParallax, setPcParallax] = useState<number>(() => Number(localStorage.getItem('pc_parallax') ?? '0.15'));
   const [pcShootingStars, setPcShootingStars] = useState<boolean>(() => localStorage.getItem('pc_shooting_stars') !== 'false');
   const [pcCometTail, setPcCometTail] = useState<boolean>(() => localStorage.getItem('pc_comet_tail') !== 'false');
 
+  // Ordered Dithering (Bayer 8x8) and Ink Current state
+  const [ditherEnabled, setDitherEnabled] = useState<boolean>(() => localStorage.getItem('bg_dither_enabled') !== 'false');
+  const [ditherStrength, setDitherStrength] = useState<number>(() => {
+    const saved = localStorage.getItem('bg_dither_strength');
+    if (!saved) return 1.0;
+    const n = Number(saved);
+    return isNaN(n) ? 1.0 : Math.max(0.0, Math.min(n, 2.0));
+  });
+  const [ditherScale, setDitherScale] = useState<number>(() => {
+    const saved = localStorage.getItem('bg_dither_scale');
+    if (!saved) return 1.0;
+    const n = Number(saved);
+    return isNaN(n) ? 1.0 : Math.max(1.0, Math.min(n, 3.0));
+  });
+  const [inkIntensity, setInkIntensity] = useState<number>(() => {
+    const saved = localStorage.getItem('bg_ink_intensity');
+    if (!saved) return 1.0;
+    const n = Number(saved);
+    return isNaN(n) ? 1.0 : Math.max(0.2, Math.min(n, 2.5));
+  });
+
   const updatePointCloud = (updates: Partial<{
     enabled: boolean;
     particleCount: number;
     sparkleSize: number;
+    cometSize: number;
     colorMode: number;
     speed: number;
     parallaxStrength: number;
@@ -737,6 +961,7 @@ export const WebGLBackground: React.FC = () => {
     if (updates.enabled !== undefined) setPcEnabled(updates.enabled);
     if (updates.particleCount !== undefined) setPcCount(updates.particleCount);
     if (updates.sparkleSize !== undefined) setPcSparkleSize(updates.sparkleSize);
+    if (updates.cometSize !== undefined) setPcCometSize(updates.cometSize);
     if (updates.colorMode !== undefined) setPcColorMode(updates.colorMode);
     if (updates.speed !== undefined) setPcSpeed(updates.speed);
     if (updates.parallaxStrength !== undefined) setPcParallax(updates.parallaxStrength);
@@ -814,7 +1039,11 @@ export const WebGLBackground: React.FC = () => {
     localStorage.setItem('bg_aurora_col1', auroraCol1);
     localStorage.setItem('bg_aurora_col2', auroraCol2);
     localStorage.setItem('bg_aurora_col3', auroraCol3);
-  }, [preset, primaryColor, secondaryColor, riverColor, opacity, intensity, speed, glassmorphic, auroraIntensity, auroraPreset, auroraCol1, auroraCol2, auroraCol3]);
+    localStorage.setItem('bg_dither_enabled', String(ditherEnabled));
+    localStorage.setItem('bg_dither_strength', String(ditherStrength));
+    localStorage.setItem('bg_dither_scale', String(ditherScale));
+    localStorage.setItem('bg_ink_intensity', String(inkIntensity));
+  }, [preset, primaryColor, secondaryColor, riverColor, opacity, intensity, speed, glassmorphic, auroraIntensity, auroraPreset, auroraCol1, auroraCol2, auroraCol3, ditherEnabled, ditherStrength, ditherScale, inkIntensity]);
 
   // WebGL Shader pipeline setup
   useEffect(() => {
@@ -900,6 +1129,9 @@ export const WebGLBackground: React.FC = () => {
     const shockwaveIntensityLocation = gl.getUniformLocation(program, 'u_shockwave_intensity');
     const impactColorLocation = gl.getUniformLocation(program, 'u_impact_color');
     const riverColorLocation = gl.getUniformLocation(program, 'u_river_color');
+    const ditherStrengthLocation = gl.getUniformLocation(program, 'u_dither_strength');
+    const ditherScaleLocation = gl.getUniformLocation(program, 'u_dither_scale');
+    const inkIntensityLocation = gl.getUniformLocation(program, 'u_ink_intensity');
 
     let animationFrameId: number;
 
@@ -1006,6 +1238,15 @@ export const WebGLBackground: React.FC = () => {
           shockwaveRef.current.color[2]
         );
       }
+      if (ditherStrengthLocation) {
+        gl.uniform1f(ditherStrengthLocation, ditherEnabled ? ditherStrength : 0.0);
+      }
+      if (ditherScaleLocation) {
+        gl.uniform1f(ditherScaleLocation, ditherScale);
+      }
+      if (inkIntensityLocation) {
+        gl.uniform1f(inkIntensityLocation, inkIntensity);
+      }
 
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -1024,7 +1265,7 @@ export const WebGLBackground: React.FC = () => {
         gl.deleteBuffer(positionBuffer);
       }
     };
-  }, [primaryColor, secondaryColor, riverColor, speed, intensity, isDarkMode, auroraIntensity, auroraCol1, auroraCol2, auroraCol3]);
+  }, [primaryColor, secondaryColor, riverColor, speed, intensity, isDarkMode, auroraIntensity, auroraCol1, auroraCol2, auroraCol3, ditherEnabled, ditherStrength, ditherScale, inkIntensity]);
 
   const selectPreset = (p: Preset) => {
     setPreset(p.id);
@@ -1050,15 +1291,65 @@ export const WebGLBackground: React.FC = () => {
     setAuroraCol1('#0aff84');
     setAuroraCol2('#00ccff');
     setAuroraCol3('#ae26ed');
+    setDitherEnabled(true);
+    setDitherStrength(1.0);
+    setDitherScale(1.0);
+    setInkIntensity(1.0);
     updatePointCloud({
       enabled: true,
-      particleCount: 380,
-      sparkleSize: 1.55,
+      particleCount: 280,
+      sparkleSize: 1.40,
+      cometSize: 1.0,
       colorMode: 0,
-      speed: 0.35,
-      parallaxStrength: 1.35,
-      shootingStarsEnabled: true
+      speed: 0.30,
+      parallaxStrength: 0.15,
+      shootingStarsEnabled: true,
+      cometTailEnabled: true
     });
+  };
+
+  const handleRandomizeThemeColors = () => {
+    const palettes = [
+      { p: '#00f2fe', s: '#4facfe', r: '#00f2fe' },
+      { p: '#ff007f', s: '#9b5de5', r: '#9b5de5' },
+      { p: '#00f5d4', s: '#10b981', r: '#00f5d4' },
+      { p: '#ff4500', s: '#f9d976', r: '#ff5500' },
+      { p: '#ff2e93', s: '#0575e6', r: '#00c6ff' },
+      { p: '#38bdf8', s: '#818cf8', r: '#c084fc' },
+      { p: '#f43f5e', s: '#fb923c', r: '#fde047' },
+      { p: '#a855f7', s: '#ec4899', r: '#06b6d4' },
+    ];
+    const choice = palettes[Math.floor(Math.random() * palettes.length)];
+    setPreset('custom');
+    setPrimaryColor(choice.p);
+    setSecondaryColor(choice.s);
+    setRiverColor(choice.r);
+    localStorage.setItem('bg_preset', 'custom');
+    localStorage.setItem('bg_primary', choice.p);
+    localStorage.setItem('bg_secondary', choice.s);
+    localStorage.setItem('bg_river_color', choice.r);
+  };
+
+  const handleRandomizeAurora = () => {
+    const auroraSets = [
+      ['#0aff84', '#00ccff', '#ae26ed'],
+      ['#ff007f', '#8a2be2', '#0000ff'],
+      ['#ffaa00', '#ff2200', '#9400d3'],
+      ['#00ffff', '#0055ff', '#ff00ff'],
+      ['#00f5d4', '#10b981', '#6366f1'],
+      ['#38bdf8', '#818cf8', '#f43f5e'],
+      ['#ff70a6', '#ff9770', '#ffd670'],
+      ['#00ff87', '#60efff', '#ff00aa']
+    ];
+    const choice = auroraSets[Math.floor(Math.random() * auroraSets.length)];
+    setAuroraCol1(choice[0]);
+    setAuroraCol2(choice[1]);
+    setAuroraCol3(choice[2]);
+    setAuroraPreset('custom');
+    localStorage.setItem('bg_aurora_preset', 'custom');
+    localStorage.setItem('bg_aurora_col1', choice[0]);
+    localStorage.setItem('bg_aurora_col2', choice[1]);
+    localStorage.setItem('bg_aurora_col3', choice[2]);
   };
 
   return (
@@ -1147,304 +1438,635 @@ export const WebGLBackground: React.FC = () => {
                 </button>
               </div>
 
-              {/* Sub-tabs */}
-              <div className="grid grid-cols-4 bg-slate-100/80 dark:bg-slate-950/60 p-1 rounded-full text-[10px] font-bold">
+              {/* Sub-tabs: 3 clear, uncluttered sections */}
+              <div className="grid grid-cols-3 bg-slate-100/80 dark:bg-slate-950/70 p-1 rounded-2xl text-[11px] font-bold">
                 <button
-                  onClick={() => setActiveTab('preset')}
-                  className={`py-1.5 rounded-full text-center transition-all cursor-pointer ${activeTab === 'preset' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                  type="button"
+                  onClick={() => setActiveTab('theme')}
+                  className={`py-2 px-1 rounded-xl text-center transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                    activeTab === 'theme' 
+                      ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm' 
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                  }`}
                 >
-                  Màu Neon
+                  <Palette className="w-3.5 h-3.5" />
+                  <span>Chủ đề</span>
                 </button>
                 <button
-                  onClick={() => setActiveTab('custom')}
-                  className={`py-1.5 rounded-full text-center transition-all cursor-pointer ${activeTab === 'custom' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                  type="button"
+                  onClick={() => setActiveTab('landscape')}
+                  className={`py-2 px-1 rounded-xl text-center transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                    activeTab === 'landscape' 
+                      ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm' 
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                  }`}
                 >
-                  Tùy chỉnh
+                  <span>⛰️</span>
+                  <span>Cảnh quan</span>
                 </button>
                 <button
-                  onClick={() => setActiveTab('aurora')}
-                  className={`py-1.5 rounded-full text-center transition-all cursor-pointer ${activeTab === 'aurora' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                  type="button"
+                  onClick={() => setActiveTab('stars')}
+                  className={`py-2 px-1 rounded-xl text-center transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                    activeTab === 'stars' 
+                      ? 'bg-white dark:bg-slate-800 text-amber-600 dark:text-amber-400 shadow-sm' 
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                  }`}
                 >
-                  Cực quang
-                </button>
-                <button
-                  onClick={() => setActiveTab('pointcloud')}
-                  className={`py-1.5 rounded-full text-center transition-all cursor-pointer flex items-center justify-center gap-1 ${activeTab === 'pointcloud' ? 'bg-white dark:bg-slate-800 text-amber-600 dark:text-amber-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}
-                >
-                  <Sparkles className="w-3 h-3 text-amber-500" />
-                  <span>Sao Van Gogh</span>
+                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                  <span>Bầu trời</span>
                 </button>
               </div>
 
-              {/* Presets Grid */}
-              {activeTab === 'preset' && (
-                <div className="grid grid-cols-1 gap-2.5 max-h-52 overflow-y-auto pr-1">
-                  {PRESETS.map((p) => {
-                    const isSelected = preset === p.id;
-                    return (
-                      <button
-                        key={p.id}
-                        onClick={() => selectPreset(p)}
-                        className={`w-full flex items-center justify-between p-2.5 rounded-2xl border text-xs font-semibold cursor-pointer transition-all ${
-                          isSelected 
-                            ? 'border-indigo-500/80 bg-indigo-50/40 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400' 
-                            : 'border-slate-150 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-950/40'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <div 
-                            className="w-4 h-4 rounded-full border border-white/20 shadow-xs"
-                            style={{ background: `linear-gradient(135deg, ${p.primary}, ${p.secondary})` }}
-                          />
-                          <span>{p.name}</span>
-                        </div>
-                        {isSelected && <Check className="w-3.5 h-3.5 stroke-[3px]" />}
-                      </button>
-                    );
-                  })}
-
-                  {/* Quick Brightness Slider right inside presets tab */}
-                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 space-y-1">
-                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                      <span className="flex items-center gap-1"><Zap className="w-3 h-3 text-amber-500" /> Mức sáng Neon (Độ sáng núi & cảnh)</span>
-                      <span className="font-mono text-amber-500 font-bold">{intensity.toFixed(2)}x</span>
+              {/* TAB 1: CHỦ ĐỀ & MÀU SẮC */}
+              {activeTab === 'theme' && (
+                <div className="space-y-3.5 max-h-[26rem] overflow-y-auto pr-1.5 text-slate-800 dark:text-slate-100">
+                  {/* Presets Grid */}
+                  <div className="space-y-1.5">
+                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
+                      Gói màu sắc chủ đề
+                    </span>
+                    <div className="grid grid-cols-1 gap-2">
+                      {PRESETS.map((p) => {
+                        const isSelected = preset === p.id;
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => selectPreset(p)}
+                            className={`w-full flex items-center justify-between p-2.5 rounded-2xl border text-xs font-semibold cursor-pointer transition-all ${
+                              isSelected 
+                                ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 ring-2 ring-indigo-500/20 shadow-xs' 
+                                : 'border-slate-150 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <div 
+                                className="w-4 h-4 rounded-full border border-white/20 shadow-xs shrink-0"
+                                style={{ background: `linear-gradient(135deg, ${p.primary}, ${p.secondary})` }}
+                              />
+                              <span className="text-xs font-bold">{p.name}</span>
+                            </div>
+                            {isSelected && <Check className="w-4 h-4 text-indigo-600 dark:text-indigo-400 stroke-[3px]" />}
+                          </button>
+                        );
+                      })}
                     </div>
-                    <input 
-                      type="range" 
-                      min="0.2" 
-                      max="2.5" 
-                      step="0.05"
-                      value={intensity}
-                      onChange={(e) => {
-                        const val = Number(e.target.value);
-                        setIntensity(val);
-                        localStorage.setItem('bg_intensity', String(val));
-                      }}
-                      className="w-full accent-amber-500 cursor-pointer h-1.5 bg-slate-100 dark:bg-slate-950 rounded-full"
-                    />
                   </div>
 
-                  {/* Quick Aurora Brightness Slider inside presets tab */}
-                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 space-y-1">
-                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                      <span className="flex items-center gap-1 text-emerald-500"><Sparkles className="w-3 h-3 text-emerald-500" /> Độ rực Cực quang (Aurora Brightness)</span>
-                      <span className="font-mono text-emerald-500 font-bold">{auroraIntensity.toFixed(1)}x</span>
+                  {/* Lighting & Motion controls */}
+                  <div className="p-3 bg-slate-50/70 dark:bg-slate-950/40 rounded-2xl border border-slate-150 dark:border-slate-800/70 space-y-3">
+                    <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                      Ánh sáng & Tốc độ
+                    </span>
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                        <span className="flex items-center gap-1.5"><Zap className="w-3.5 h-3.5 text-amber-500" /> Mức sáng Neon tổng thể</span>
+                        <span className="font-mono text-amber-500 font-bold">{intensity.toFixed(2)}x</span>
+                      </div>
+                      <input 
+                        type="range" 
+                        min="0.2" 
+                        max="2.5" 
+                        step="0.05"
+                        value={intensity}
+                        onChange={(e) => {
+                          const val = Number(e.target.value);
+                          setIntensity(val);
+                          localStorage.setItem('bg_intensity', String(val));
+                        }}
+                        className="w-full accent-amber-500 cursor-pointer h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full"
+                      />
                     </div>
-                    <input 
-                      type="range" 
-                      min="0.1" 
-                      max="3.0" 
-                      step="0.05"
-                      value={auroraIntensity}
-                      onChange={(e) => {
-                        const val = Number(e.target.value);
-                        setAuroraIntensity(val);
-                        localStorage.setItem('bg_aurora_intensity', String(val));
-                      }}
-                      className="w-full accent-emerald-500 cursor-pointer h-1.5 bg-slate-100 dark:bg-slate-950 rounded-full"
-                    />
+
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                        <span className="flex items-center gap-1.5"><Waves className="w-3.5 h-3.5 text-indigo-500" /> Tốc độ trôi dạt thiên hà</span>
+                        <span className="font-mono text-indigo-500 font-bold">{speed.toFixed(1)}x</span>
+                      </div>
+                      <input 
+                        type="range" 
+                        min="0.1" 
+                        max="2.5" 
+                        step="0.1"
+                        value={speed}
+                        onChange={(e) => setSpeed(Number(e.target.value))}
+                        className="w-full accent-indigo-500 cursor-pointer h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Optional Custom Hex/Hue palette expander */}
+                  <div className="rounded-2xl border border-slate-150 dark:border-slate-800/80 overflow-hidden bg-white/50 dark:bg-slate-900/50">
+                    <button
+                      type="button"
+                      onClick={() => setShowCustomColors(!showCustomColors)}
+                      className="w-full flex items-center justify-between p-3 bg-slate-50/70 dark:bg-slate-950/40 text-[11px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100/50 dark:hover:bg-slate-800/30 transition-colors cursor-pointer"
+                    >
+                      <span className="flex items-center gap-2">
+                        <Palette className="w-3.5 h-3.5 text-indigo-500" />
+                        <span>Tùy biến mã màu riêng (Núi & Dòng Sông)</span>
+                      </span>
+                      <span className="text-[10px] font-mono text-indigo-500 dark:text-indigo-400 font-semibold">
+                        {showCustomColors ? '▲ Thu gọn' : '▼ Tự do chọn màu'}
+                      </span>
+                    </button>
+
+                    {showCustomColors && (
+                      <div className="p-3 space-y-3 border-t border-slate-100 dark:border-slate-800/60">
+                        <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400">
+                          <span>Click ô màu để mở bảng chọn hoặc gõ mã HEX</span>
+                          <button
+                            type="button"
+                            onClick={handleRandomizeThemeColors}
+                            className="flex items-center gap-1 text-[9px] text-indigo-600 dark:text-indigo-400 font-bold hover:underline cursor-pointer"
+                            title="Trộn ngẫu nhiên bộ màu phối cảnh"
+                          >
+                            <Shuffle className="w-3 h-3" /> Trộn màu
+                          </button>
+                        </div>
+
+                        {/* Neon 1: Primary Mountain Rim */}
+                        <ColorField
+                          label="Màu Viền Núi 1"
+                          sublabel="Rặng núi xa (Ridge A)"
+                          value={primaryColor}
+                          onChange={(c) => {
+                            setPreset('custom');
+                            setPrimaryColor(c);
+                            localStorage.setItem('bg_preset', 'custom');
+                            localStorage.setItem('bg_primary', c);
+                          }}
+                          presetSwatches={['#00f2fe', '#ff007f', '#00f5d4', '#ff4500', '#ae26ed', '#ffeb3b', '#10b981']}
+                        />
+
+                        {/* Neon 2: Secondary Mountain Rim */}
+                        <ColorField
+                          label="Màu Viền Núi 2"
+                          sublabel="Rặng núi gần (Ridge B)"
+                          value={secondaryColor}
+                          onChange={(c) => {
+                            setPreset('custom');
+                            setSecondaryColor(c);
+                            localStorage.setItem('bg_preset', 'custom');
+                            localStorage.setItem('bg_secondary', c);
+                          }}
+                          presetSwatches={['#4facfe', '#9b5de5', '#10b981', '#f9d976', '#0575e6', '#ff8c00', '#ff007f']}
+                        />
+
+                        {/* River Color */}
+                        <ColorField
+                          label="Màu Dòng Sông Topography"
+                          sublabel="Đường đồng mức & ánh phản chiếu"
+                          value={riverColor}
+                          onChange={(c) => {
+                            setPreset('custom');
+                            setRiverColor(c);
+                            localStorage.setItem('bg_preset', 'custom');
+                            localStorage.setItem('bg_river_color', c);
+                          }}
+                          presetSwatches={['#00f2fe', '#00f5d4', '#0055ff', '#9b5de5', '#ff007f', '#10b981', '#38bdf8']}
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
 
-              {/* Custom Sliders & Color Pickers */}
-              {activeTab === 'custom' && (
-                <div className="space-y-3.5 max-h-[17.5rem] overflow-y-auto pr-1">
-                  
-                  {/* Custom Neon 1 */}
-                  <div className="space-y-2 p-2.5 bg-slate-50/50 dark:bg-slate-950/40 rounded-2xl border border-slate-100/80 dark:border-slate-800/80">
+              {/* TAB 2: CẢNH QUAN (NÚI, SÔNG & CỰC QUANG) */}
+              {activeTab === 'landscape' && (
+                <div className="space-y-3.5 max-h-[26rem] overflow-y-auto pr-1.5 text-slate-800 dark:text-slate-100">
+                  {/* Mountain Dither Card */}
+                  <div className="p-3 bg-fuchsia-50/50 dark:bg-fuchsia-950/25 rounded-2xl border border-fuchsia-200/60 dark:border-fuchsia-800/40 space-y-2.5">
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider">Màu Neon 1 (Chủ Đạo)</span>
-                      <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-lg px-2 py-0.5 shadow-xs">
-                        <span className="w-2.5 h-2.5 rounded-full border border-white/20 shrink-0" style={{ backgroundColor: primaryColor }} />
-                        <input 
-                          type="text"
-                          value={primaryColor}
-                          onChange={(e) => {
-                            setPreset('custom');
-                            setPrimaryColor(e.target.value);
-                          }}
-                          className="w-14 text-center text-[9px] font-mono uppercase bg-transparent border-0 focus:outline-none p-0 text-slate-600 dark:text-slate-400 font-bold"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Quick Swatches */}
-                    <div className="flex gap-2 justify-center py-0.5">
-                      {['#00f2fe', '#ff007f', '#00f5d4', '#ff4500', '#ae26ed', '#ffeb3b'].map((hex) => {
-                        const isSelected = primaryColor.toLowerCase() === hex.toLowerCase();
-                        return (
-                          <button
-                            key={hex}
-                            onClick={() => {
-                              setPreset('custom');
-                              setPrimaryColor(hex);
-                            }}
-                            className={`w-5 h-5 rounded-full border cursor-pointer transition-all hover:scale-110 active:scale-90 ${
-                              isSelected ? 'border-slate-700 dark:border-white ring-2 ring-indigo-500/30 scale-110' : 'border-white/20 shadow-xs'
-                            }`}
-                            style={{ backgroundColor: hex }}
-                            title={hex}
-                          />
-                        );
-                      })}
-                    </div>
-
-                    {/* Hue Slider */}
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-[8px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider leading-none">
-                        <span>Quang phổ Màu 1</span>
-                        <span>{hexToHue(primaryColor)}°</span>
-                      </div>
-                      <input 
-                        type="range"
-                        min="0"
-                        max="360"
-                        value={hexToHue(primaryColor)}
-                        onChange={(e) => {
-                          setPreset('custom');
-                          setPrimaryColor(hueToHex(Number(e.target.value)));
-                        }}
-                        className="w-full h-2 rounded-full cursor-pointer appearance-none outline-none accent-slate-800 dark:accent-white"
-                        style={{
-                          background: 'linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)'
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Custom Neon 2 */}
-                  <div className="space-y-2 p-2.5 bg-slate-50/50 dark:bg-slate-950/40 rounded-2xl border border-slate-100/80 dark:border-slate-800/80">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider">Màu Neon 2 (Phụ Trợ)</span>
-                      <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-lg px-2 py-0.5 shadow-xs">
-                        <span className="w-2.5 h-2.5 rounded-full border border-white/20 shrink-0" style={{ backgroundColor: secondaryColor }} />
-                        <input 
-                          type="text"
-                          value={secondaryColor}
-                          onChange={(e) => {
-                            setPreset('custom');
-                            setSecondaryColor(e.target.value);
-                          }}
-                          className="w-14 text-center text-[9px] font-mono uppercase bg-transparent border-0 focus:outline-none p-0 text-slate-600 dark:text-slate-400 font-bold"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Quick Swatches */}
-                    <div className="flex gap-2 justify-center py-0.5">
-                      {['#4facfe', '#9b5de5', '#10b981', '#f9d976', '#0575e6', '#ff8c00'].map((hex) => {
-                        const isSelected = secondaryColor.toLowerCase() === hex.toLowerCase();
-                        return (
-                          <button
-                            key={hex}
-                            onClick={() => {
-                              setPreset('custom');
-                              setSecondaryColor(hex);
-                            }}
-                            className={`w-5 h-5 rounded-full border cursor-pointer transition-all hover:scale-110 active:scale-90 ${
-                              isSelected ? 'border-slate-700 dark:border-white ring-2 ring-indigo-500/30 scale-110' : 'border-white/20 shadow-xs'
-                            }`}
-                            style={{ backgroundColor: hex }}
-                            title={hex}
-                          />
-                        );
-                      })}
-                    </div>
-
-                    {/* Hue Slider */}
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-[8px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider leading-none">
-                        <span>Quang phổ Màu 2</span>
-                        <span>{hexToHue(secondaryColor)}°</span>
-                      </div>
-                      <input 
-                        type="range"
-                        min="0"
-                        max="360"
-                        value={hexToHue(secondaryColor)}
-                        onChange={(e) => {
-                          setPreset('custom');
-                          setSecondaryColor(hueToHex(Number(e.target.value)));
-                        }}
-                        className="w-full h-2 rounded-full cursor-pointer appearance-none outline-none accent-slate-800 dark:accent-white"
-                        style={{
-                          background: 'linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)'
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Custom River / Fractal Noise Color */}
-                  <div className="space-y-2 p-2.5 bg-slate-50/50 dark:bg-slate-950/40 rounded-2xl border border-slate-100/80 dark:border-slate-800/80">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-black text-cyan-600 dark:text-cyan-400 uppercase tracking-wider flex items-center gap-1">
-                        🌊 Màu Dòng Sông (Fractal Noise)
+                      <span className="text-[11px] font-black text-fuchsia-600 dark:text-fuchsia-400 uppercase tracking-wide flex items-center gap-1.5">
+                        <span>🏁</span> Hạt Dither Núi & Mặt Trăng
                       </span>
-                      <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-lg px-2 py-0.5 shadow-xs">
-                        <span className="w-2.5 h-2.5 rounded-full border border-white/20 shrink-0" style={{ backgroundColor: riverColor }} />
-                        <input 
-                          type="text"
-                          value={riverColor}
-                          onChange={(e) => {
-                            setRiverColor(e.target.value);
-                            localStorage.setItem('bg_river_color', e.target.value);
-                          }}
-                          className="w-14 text-center text-[9px] font-mono uppercase bg-transparent border-0 focus:outline-none p-0 text-slate-600 dark:text-slate-400 font-bold"
-                        />
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setDitherEnabled(!ditherEnabled)}
+                        className={`text-[9px] px-2.5 py-0.5 rounded-full font-bold cursor-pointer transition-colors ${
+                          ditherEnabled 
+                            ? 'bg-fuchsia-600 text-white shadow-xs' 
+                            : 'bg-slate-200 dark:bg-slate-800 text-slate-500'
+                        }`}
+                      >
+                        {ditherEnabled ? 'Đang Bật' : 'Đã Tắt'}
+                      </button>
                     </div>
 
-                    {/* Quick Swatches for River Fractal Noise */}
-                    <div className="flex gap-2 justify-center py-0.5">
-                      {['#00f2fe', '#00f5d4', '#0055ff', '#9b5de5', '#ff007f', '#ffd200', '#ff5500', '#10b981'].map((hex) => {
-                        const isSelected = riverColor.toLowerCase() === hex.toLowerCase();
-                        return (
-                          <button
-                            key={hex}
-                            onClick={() => {
-                              setRiverColor(hex);
-                              localStorage.setItem('bg_river_color', hex);
-                            }}
-                            className={`w-5 h-5 rounded-full border cursor-pointer transition-all hover:scale-110 active:scale-90 ${
-                              isSelected ? 'border-slate-700 dark:border-white ring-2 ring-cyan-500/40 scale-110' : 'border-white/20 shadow-xs'
-                            }`}
-                            style={{ backgroundColor: hex }}
-                            title={hex}
-                          />
-                        );
-                      })}
-                    </div>
-
-                    {/* Hue Slider for River */}
                     <div className="space-y-1">
-                      <div className="flex justify-between text-[8px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider leading-none">
-                        <span>Quang phổ Màu Dòng Sông</span>
-                        <span>{hexToHue(riverColor)}°</span>
+                      <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-400 font-semibold">
+                        <span>Cường độ Dither (Halftone)</span>
+                        <span className="font-mono text-fuchsia-600 dark:text-fuchsia-400 font-bold">{ditherStrength.toFixed(2)}x</span>
                       </div>
                       <input 
                         type="range"
-                        min="0"
-                        max="360"
-                        value={hexToHue(riverColor)}
-                        onChange={(e) => {
-                          const hex = hueToHex(Number(e.target.value));
-                          setRiverColor(hex);
-                          localStorage.setItem('bg_river_color', hex);
-                        }}
-                        className="w-full h-2 rounded-full cursor-pointer appearance-none outline-none accent-cyan-500"
-                        style={{
-                          background: 'linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)'
-                        }}
+                        min="0.2"
+                        max="2.0"
+                        step="0.05"
+                        value={ditherStrength}
+                        onChange={(e) => setDitherStrength(Number(e.target.value))}
+                        className="w-full accent-fuchsia-500 cursor-pointer h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-400 font-semibold">
+                        <span>Cỡ hạt Dither (Bayer Scale)</span>
+                        <span className="font-mono text-fuchsia-600 dark:text-fuchsia-400 font-bold">{ditherScale.toFixed(1)}px</span>
+                      </div>
+                      <input 
+                        type="range"
+                        min="1.0"
+                        max="3.0"
+                        step="0.2"
+                        value={ditherScale}
+                        onChange={(e) => setDitherScale(Number(e.target.value))}
+                        className="w-full accent-fuchsia-500 cursor-pointer h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full"
                       />
                     </div>
                   </div>
 
-                  {/* Opacity Slider */}
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                      <span className="flex items-center gap-1"><Eye className="w-3 h-3" /> Độ mờ thẻ UI (UI Opacity)</span>
-                      <span className="font-mono">{Math.round(opacity * 100)}%</span>
+                  {/* River Topography Card */}
+                  <div className="p-3 bg-cyan-50/50 dark:bg-cyan-950/25 rounded-2xl border border-cyan-200/60 dark:border-cyan-800/40 space-y-2">
+                    <span className="text-[11px] font-black text-cyan-600 dark:text-cyan-400 uppercase tracking-wide flex items-center gap-1.5">
+                      <span>🌊</span> Dòng Sông Topography (Mặt Nước Thủy Kính)
+                    </span>
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-400 font-semibold">
+                        <span>Độ sáng đường đồng mức sông</span>
+                        <span className="font-mono text-cyan-600 dark:text-cyan-400 font-bold">{inkIntensity.toFixed(2)}x</span>
+                      </div>
+                      <input 
+                        type="range" 
+                        min="0.2" 
+                        max="2.5" 
+                        step="0.05"
+                        value={inkIntensity}
+                        onChange={(e) => setInkIntensity(Number(e.target.value))}
+                        className="w-full accent-cyan-500 cursor-pointer h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Aurora Card */}
+                  <div className="p-3.5 bg-emerald-50/50 dark:bg-emerald-950/25 rounded-2xl border border-emerald-200/60 dark:border-emerald-800/40 space-y-3">
+                    <div className="flex items-center justify-between text-[11px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-wide">
+                      <span className="flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5" /> Dải Cực Quang (Aurora Borealis)
+                      </span>
+                      <span className="font-mono font-bold">{auroraIntensity.toFixed(2)}x</span>
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-400 font-semibold">
+                        <span>Độ sáng & rực rỡ cực quang</span>
+                        <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold">{auroraIntensity.toFixed(2)}x</span>
+                      </div>
+                      <input 
+                        type="range" 
+                        min="0.1" 
+                        max="3.0" 
+                        step="0.05"
+                        value={auroraIntensity}
+                        onChange={(e) => {
+                          const val = Number(e.target.value);
+                          setAuroraIntensity(val);
+                          localStorage.setItem('bg_aurora_intensity', String(val));
+                        }}
+                        className="w-full accent-emerald-500 cursor-pointer h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full"
+                      />
+                    </div>
+
+                    {/* Live Aurora Spectrum Ribbon Preview */}
+                    <div className="space-y-1.5 pt-1">
+                      <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                        <span className="flex items-center gap-1">
+                          <span>🌈</span> Phổ màu 3 tầng đang chiếu
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleRandomizeAurora}
+                          className="flex items-center gap-1 text-[9px] text-emerald-600 dark:text-emerald-400 font-bold hover:underline cursor-pointer"
+                          title="Trộn ngẫu nhiên màu cực quang"
+                        >
+                          <Shuffle className="w-3 h-3" /> Trộn màu
+                        </button>
+                      </div>
+                      <div 
+                        className="h-5 rounded-xl border border-white/20 shadow-xs relative overflow-hidden transition-all duration-300"
+                        style={{
+                          background: `linear-gradient(90deg, ${auroraCol1} 0%, ${auroraCol2} 50%, ${auroraCol3} 100%)`,
+                          boxShadow: `0 0 14px ${auroraCol1}40, 0 0 20px ${auroraCol2}25`
+                        }}
+                      >
+                        <div className="absolute inset-0 bg-gradient-to-b from-white/25 to-transparent" />
+                        <div className="absolute inset-0 flex items-center justify-between px-2 text-[8px] font-mono font-bold text-black/70 dark:text-white/90 select-none">
+                          <span className="drop-shadow-xs">Tầng 1</span>
+                          <span className="drop-shadow-xs">Tầng 2</span>
+                          <span className="drop-shadow-xs">Tầng 3</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Aurora Preset pills */}
+                    <div className="space-y-1.5">
+                      <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
+                        Bộ phối màu có sẵn
+                      </span>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {AURORA_PALETTES.map((ap) => {
+                          const isSelected = auroraPreset === ap.id;
+                          return (
+                            <button
+                              key={ap.id}
+                              type="button"
+                              onClick={() => {
+                                setAuroraPreset(ap.id);
+                                if (ap.id !== 'custom') {
+                                  setAuroraCol1(ap.col1);
+                                  setAuroraCol2(ap.col2);
+                                  setAuroraCol3(ap.col3);
+                                  localStorage.setItem('bg_aurora_preset', ap.id);
+                                  localStorage.setItem('bg_aurora_col1', ap.col1);
+                                  localStorage.setItem('bg_aurora_col2', ap.col2);
+                                  localStorage.setItem('bg_aurora_col3', ap.col3);
+                                }
+                              }}
+                              className={`flex items-center gap-1.5 p-2 rounded-xl border text-[10px] font-bold cursor-pointer transition-all ${
+                                isSelected 
+                                  ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 shadow-xs ring-1 ring-emerald-500/30' 
+                                  : 'border-slate-150 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40 text-slate-600 dark:text-slate-300'
+                              }`}
+                            >
+                              <div className="flex gap-0.5 shrink-0">
+                                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: ap.col1 }} />
+                                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: ap.col2 }} />
+                                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: ap.col3 }} />
+                              </div>
+                              <span className="truncate">{ap.name}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Freedom 3-Tier Aurora Color Pickers */}
+                    <div className="space-y-2.5 pt-2 border-t border-emerald-200/50 dark:border-emerald-800/40">
+                      <div className="flex items-center justify-between text-[10px] font-black text-emerald-700 dark:text-emerald-300 uppercase tracking-wide">
+                        <span>Tùy biến 3 tầng cực quang</span>
+                        <span className="text-[9px] text-slate-400 font-normal">Click ô màu hoặc gõ HEX</span>
+                      </div>
+
+                      {/* Layer 1 */}
+                      <ColorField
+                        label="Tầng 1: Đỉnh rèm cực quang"
+                        sublabel="Dải sáng phía trên (Ribbon Crest)"
+                        value={auroraCol1}
+                        onChange={(c) => {
+                          setAuroraCol1(c);
+                          setAuroraPreset('custom');
+                          localStorage.setItem('bg_aurora_preset', 'custom');
+                          localStorage.setItem('bg_aurora_col1', c);
+                        }}
+                        presetSwatches={['#0aff84', '#00f5d4', '#00ccff', '#ff007f', '#ffaa00', '#ae26ed', '#ffffff']}
+                      />
+
+                      {/* Layer 2 */}
+                      <ColorField
+                        label="Tầng 2: Thân dải lụa phát sáng"
+                        sublabel="Dải chuyển tiếp ở giữa (Mid Curtain)"
+                        value={auroraCol2}
+                        onChange={(c) => {
+                          setAuroraCol2(c);
+                          setAuroraPreset('custom');
+                          localStorage.setItem('bg_aurora_preset', 'custom');
+                          localStorage.setItem('bg_aurora_col2', c);
+                        }}
+                        presetSwatches={['#00ccff', '#0055ff', '#8a2be2', '#ff2200', '#10b981', '#ff00aa', '#00f2fe']}
+                      />
+
+                      {/* Layer 3 */}
+                      <ColorField
+                        label="Tầng 3: Chân mây huyền ảo"
+                        sublabel="Dải khói đáy cực quang (Base Flow)"
+                        value={auroraCol3}
+                        onChange={(c) => {
+                          setAuroraCol3(c);
+                          setAuroraPreset('custom');
+                          localStorage.setItem('bg_aurora_preset', 'custom');
+                          localStorage.setItem('bg_aurora_col3', c);
+                        }}
+                        presetSwatches={['#ae26ed', '#0000ff', '#9400d3', '#ff00ff', '#00ffcc', '#ff3366', '#4facfe']}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 3: BẦU TRỜ (SAO VAN GOGH, SAO BĂNG, MẶT TRĂNG) */}
+              {activeTab === 'stars' && (
+                <div className="space-y-3.5 max-h-[26rem] overflow-y-auto pr-1.5 text-slate-800 dark:text-slate-100">
+                  {/* Van Gogh Star Dust Toggle & Controls */}
+                  <div className="p-3 bg-amber-50/50 dark:bg-amber-950/25 rounded-2xl border border-amber-200/60 dark:border-amber-800/40 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-wide flex items-center gap-1.5">
+                        <Sparkle className="w-3.5 h-3.5 text-amber-500" /> Bụi Sao Rơi Van Gogh
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => updatePointCloud({ enabled: !pcEnabled })}
+                        className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-200 outline-none cursor-pointer flex items-center ${
+                          pcEnabled ? 'bg-amber-500 justify-end' : 'bg-slate-300 dark:bg-slate-700 justify-start'
+                        }`}
+                      >
+                        <motion.div layout className="w-4 h-4 bg-white rounded-full shadow-md" />
+                      </button>
+                    </div>
+
+                    {pcEnabled && (
+                      <div className="space-y-2.5 pt-1 border-t border-amber-200/40 dark:border-amber-800/30">
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-400 font-semibold">
+                            <span>Độ to hạt sao</span>
+                            <span className="font-mono text-amber-600 dark:text-amber-400 font-bold">{pcSparkleSize.toFixed(2)}x</span>
+                          </div>
+                          <input 
+                            type="range" 
+                            min="0.3" 
+                            max="3.5" 
+                            step="0.05"
+                            value={pcSparkleSize}
+                            onChange={(e) => updatePointCloud({ sparkleSize: Number(e.target.value) })}
+                            className="w-full accent-amber-500 cursor-pointer h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-400 font-semibold">
+                            <span>Mật độ bụi sao</span>
+                            <span className="font-mono text-amber-600 dark:text-amber-400 font-bold">{pcCount} hạt</span>
+                          </div>
+                          <input 
+                            type="range" 
+                            min="100" 
+                            max="800" 
+                            step="25"
+                            value={pcCount}
+                            onChange={(e) => updatePointCloud({ particleCount: Number(e.target.value) })}
+                            className="w-full accent-amber-500 cursor-pointer h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full"
+                          />
+                        </div>
+
+                        {/* Color modes for stars */}
+                        <div className="grid grid-cols-2 gap-1.5 pt-1">
+                          {[
+                            { id: 0, label: '🌌 Đêm Đầy Sao' },
+                            { id: 1, label: '🌻 Hướng Dương' },
+                            { id: 2, label: '☕ Cà Phê Đêm' },
+                            { id: 3, label: '🎨 Đồng Bộ Theme' },
+                          ].map((c) => (
+                            <button
+                              key={c.id}
+                              type="button"
+                              onClick={() => updatePointCloud({ colorMode: c.id })}
+                              className={`py-1.5 px-2 rounded-xl border text-[9px] font-bold transition-all cursor-pointer text-center ${
+                                pcColorMode === c.id
+                                  ? 'border-amber-500 bg-amber-500/15 text-amber-600 dark:text-amber-300'
+                                  : 'border-slate-150 dark:border-slate-800 text-slate-500 hover:bg-slate-50'
+                              }`}
+                            >
+                              {c.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Meteors & Comet Card */}
+                  <div className="p-3 bg-indigo-50/50 dark:bg-indigo-950/25 rounded-2xl border border-indigo-200/60 dark:border-indigo-800/40 space-y-2.5">
+                    <span className="text-[11px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-wide block">
+                      Sao Băng & Chuột Sao Chổi
+                    </span>
+
+                    {/* Shooting stars row */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-[11px] font-semibold">
+                        <span>🌠</span>
+                        <span>Sao băng vũ trụ</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {pcShootingStars && (
+                          <button
+                            type="button"
+                            onClick={() => window.dispatchEvent(new CustomEvent('trigger-shooting-star'))}
+                            className="px-2 py-0.5 text-[9px] font-bold bg-indigo-100 hover:bg-indigo-200 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 rounded-lg cursor-pointer"
+                          >
+                            Phóng sao ngay
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => updatePointCloud({ shootingStarsEnabled: !pcShootingStars })}
+                          className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-200 outline-none cursor-pointer flex items-center ${
+                            pcShootingStars ? 'bg-indigo-600 justify-end' : 'bg-slate-300 dark:bg-slate-700 justify-start'
+                          }`}
+                        >
+                          <motion.div layout className="w-4 h-4 bg-white rounded-full shadow-md" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Comet tail row */}
+                    <div className="space-y-1.5 pt-1 border-t border-indigo-100 dark:border-indigo-900/30">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 text-[11px] font-semibold">
+                          <span>☄️</span>
+                          <span>Vệt sao chổi chuột</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => updatePointCloud({ cometTailEnabled: !pcCometTail })}
+                          className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-200 outline-none cursor-pointer flex items-center ${
+                            pcCometTail ? 'bg-cyan-500 justify-end' : 'bg-slate-300 dark:bg-slate-700 justify-start'
+                          }`}
+                        >
+                          <motion.div layout className="w-4 h-4 bg-white rounded-full shadow-md" />
+                        </button>
+                      </div>
+                      {pcCometTail && (
+                        <div className="space-y-1 pt-1">
+                          <div className="flex justify-between text-[10px] text-slate-500 font-semibold">
+                            <span>Độ to vệt sao chổi</span>
+                            <span className="font-mono text-cyan-600 dark:text-cyan-400 font-bold">{pcCometSize.toFixed(2)}x</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0.3"
+                            max="3.5"
+                            step="0.05"
+                            value={pcCometSize}
+                            onChange={(e) => updatePointCloud({ cometSize: Number(e.target.value) })}
+                            className="w-full accent-cyan-500 cursor-pointer h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Moon phase card */}
+                  {(() => {
+                    const lunar = getRealWorldMoonPhase();
+                    return (
+                      <div className="p-2.5 bg-slate-50/60 dark:bg-slate-950/30 rounded-2xl border border-slate-150 dark:border-slate-800/60 flex items-center justify-between text-[11px]">
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg">🌕</span>
+                          <div>
+                            <span className="font-bold block text-slate-700 dark:text-slate-200">Chu kỳ Mặt Trăng</span>
+                            <span className="text-[10px] text-slate-400">{lunar.name}</span>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <span className="font-mono font-bold text-amber-500 text-xs">{lunar.illuminated}%</span>
+                          <span className="block text-[8px] text-slate-400">chiếu sáng</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {/* FOOTER: GIAO DIỆN KÍNH MỜ & ĐỘ TRONG SUỐT */}
+              <div className="flex flex-col gap-2 bg-slate-50/80 dark:bg-slate-950/40 p-3 rounded-2xl border border-slate-150 dark:border-slate-800/60 mt-1">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-left">
+                    <Layers className="w-4 h-4 text-indigo-500 shrink-0" />
+                    <div>
+                      <span className="text-xs font-black block">Giao diện Kính mờ (Glassmorphic)</span>
+                      <span className="text-[9px] text-slate-400 font-medium">Nhìn xuyên thấu qua các bảng thẻ UI</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setGlassmorphic(!glassmorphic)}
+                    className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-200 outline-none cursor-pointer flex items-center shrink-0 ${
+                      glassmorphic ? 'bg-indigo-600 justify-end' : 'bg-slate-300 dark:bg-slate-700 justify-start'
+                    }`}
+                  >
+                    <motion.div 
+                      layout 
+                      className="w-4 h-4 bg-white rounded-full shadow-md"
+                      transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                    />
+                  </button>
+                </div>
+                {glassmorphic && (
+                  <div className="pt-2 border-t border-slate-200/50 dark:border-slate-800/50 space-y-1">
+                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-500">
+                      <span>Độ trong suốt thẻ UI</span>
+                      <span className="font-mono text-indigo-500 font-bold">{Math.round((1 - opacity) * 100)}%</span>
                     </div>
                     <input 
                       type="range" 
@@ -1453,464 +2075,10 @@ export const WebGLBackground: React.FC = () => {
                       step="0.05"
                       value={opacity}
                       onChange={(e) => setOpacity(Number(e.target.value))}
-                      className="w-full accent-indigo-500 cursor-pointer h-1.5 bg-slate-100 dark:bg-slate-950 rounded-full"
+                      className="w-full accent-indigo-500 cursor-pointer h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full"
                     />
                   </div>
-
-                  {/* Glow intensity Slider */}
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                      <span className="flex items-center gap-1"><Zap className="w-3 h-3 text-amber-500" /> Mức sáng Neon (Độ sáng núi & cảnh)</span>
-                      <span className="font-mono">{intensity.toFixed(2)}x</span>
-                    </div>
-                    <input 
-                      type="range" 
-                      min="0.2" 
-                      max="2.5" 
-                      step="0.05"
-                      value={intensity}
-                      onChange={(e) => {
-                        const val = Number(e.target.value);
-                        setIntensity(val);
-                        localStorage.setItem('bg_intensity', String(val));
-                      }}
-                      className="w-full accent-amber-500 cursor-pointer h-1.5 bg-slate-100 dark:bg-slate-950 rounded-full"
-                    />
-                  </div>
-
-                  {/* Speed Slider */}
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                      <span className="flex items-center gap-1"><Waves className="w-3 h-3" /> Tốc độ trôi dạt</span>
-                      <span className="font-mono">{speed.toFixed(1)}x</span>
-                    </div>
-                    <input 
-                      type="range" 
-                      min="0.1" 
-                      max="2.5" 
-                      step="0.1"
-                      value={speed}
-                      onChange={(e) => setSpeed(Number(e.target.value))}
-                      className="w-full accent-indigo-500 cursor-pointer h-1.5 bg-slate-100 dark:bg-slate-950 rounded-full"
-                    />
-                  </div>
-
-                </div>
-              )}
-
-              {/* Aurora Custom Tab */}
-              {activeTab === 'aurora' && (
-                <div className="space-y-3.5 max-h-56 overflow-y-auto pr-1 text-slate-800 dark:text-slate-100">
-                  {/* Aurora Intensity Slider */}
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                      <span className="flex items-center gap-1 text-emerald-500"><Sparkles className="w-3 h-3 text-emerald-500 shrink-0" /> Độ rực Cực quang</span>
-                      <span className="font-mono">{auroraIntensity.toFixed(1)}x</span>
-                    </div>
-                    <input 
-                      type="range" 
-                      min="0.1" 
-                      max="3.0" 
-                      step="0.05"
-                      value={auroraIntensity}
-                      onChange={(e) => {
-                        const val = Number(e.target.value);
-                        setAuroraIntensity(val);
-                        localStorage.setItem('bg_aurora_intensity', String(val));
-                      }}
-                      className="w-full accent-emerald-500 cursor-pointer h-1.5 bg-slate-100 dark:bg-slate-950 rounded-full"
-                    />
-                  </div>
-
-                  {/* Aurora Presets List */}
-                  <div className="space-y-1">
-                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">Gói màu cực quang</span>
-                    <div className="grid grid-cols-1 gap-1.5">
-                      {AURORA_PALETTES.map((ap) => {
-                        const isSelected = auroraPreset === ap.id;
-                        return (
-                          <button
-                            key={ap.id}
-                            onClick={() => {
-                              setAuroraPreset(ap.id);
-                              if (ap.id !== 'custom') {
-                                setAuroraCol1(ap.col1);
-                                setAuroraCol2(ap.col2);
-                                setAuroraCol3(ap.col3);
-                              }
-                            }}
-                            className={`w-full flex items-center justify-between p-2 rounded-xl border text-[11px] font-semibold cursor-pointer transition-all ${
-                              isSelected 
-                                ? 'border-emerald-500 bg-emerald-50/40 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400' 
-                                : 'border-slate-150 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-950/40'
-                            }`}
-                          >
-                            <div className="flex items-center gap-2">
-                              <div className="flex gap-0.5">
-                                <span className="w-2.5 h-2.5 rounded-full border border-white/20" style={{ backgroundColor: ap.col1 }} />
-                                <span className="w-2.5 h-2.5 rounded-full border border-white/20" style={{ backgroundColor: ap.col2 }} />
-                                <span className="w-2.5 h-2.5 rounded-full border border-white/20" style={{ backgroundColor: ap.col3 }} />
-                              </div>
-                              <span>{ap.name}</span>
-                            </div>
-                            {isSelected && <Check className="w-3 h-3 stroke-[3px]" />}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Aurora Custom Color Pickers */}
-                  <div className="space-y-2 border-t border-slate-100 dark:border-slate-800/80 pt-2.5">
-                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">Tự thiết lập màu cực quang</span>
-                    
-                    {/* Color Swatches selection */}
-                    <div className="grid grid-cols-3 gap-2">
-                      {[
-                        { label: 'Màu 1', color: auroraCol1, idx: 1 as const },
-                        { label: 'Màu 2', color: auroraCol2, idx: 2 as const },
-                        { label: 'Màu 3', color: auroraCol3, idx: 3 as const },
-                      ].map((item) => {
-                        const isSelected = activeAuroraColorIdx === item.idx;
-                        return (
-                          <button
-                            type="button"
-                            key={item.idx}
-                            onClick={() => setActiveAuroraColorIdx(item.idx)}
-                            className={`flex flex-col items-center gap-1 p-1.5 rounded-xl border text-[9px] font-bold cursor-pointer transition-all ${
-                              isSelected 
-                                ? 'border-emerald-500 bg-emerald-50/20 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 shadow-xs' 
-                                : 'border-slate-100 dark:border-slate-800/80 hover:bg-slate-50/50'
-                            }`}
-                          >
-                            <span>{item.label}</span>
-                            <div 
-                              className={`w-6 h-6 rounded-lg border shadow-xs transition-all ${
-                                isSelected ? 'scale-110 ring-2 ring-emerald-500/30 border-emerald-500' : 'border-white/20'
-                              }`} 
-                              style={{ backgroundColor: item.color }} 
-                            />
-                            <span className="font-mono text-[8px] uppercase tracking-tighter opacity-70">{item.color}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    {/* Integrated Slider for Selected Aurora Color */}
-                    <div className="space-y-1.5 bg-slate-50/50 dark:bg-slate-950/40 p-2 rounded-xl border border-slate-100/60 dark:border-slate-800/40 mt-1">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase">
-                          Sửa Màu {activeAuroraColorIdx}
-                        </span>
-                        <input 
-                          type="text"
-                          value={
-                            activeAuroraColorIdx === 1 ? auroraCol1 :
-                            activeAuroraColorIdx === 2 ? auroraCol2 :
-                            auroraCol3
-                          }
-                          onChange={(e) => {
-                            setAuroraPreset('custom');
-                            const val = e.target.value;
-                            if (activeAuroraColorIdx === 1) setAuroraCol1(val);
-                            else if (activeAuroraColorIdx === 2) setAuroraCol2(val);
-                            else setAuroraCol3(val);
-                          }}
-                          className="w-14 text-center text-[9px] font-mono uppercase bg-transparent border-0 border-b border-slate-200 dark:border-slate-700 focus:border-emerald-500 outline-none p-0 text-slate-600 dark:text-slate-400 font-bold"
-                        />
-                      </div>
-
-                      {/* Spectrum Hue Slider */}
-                      <input 
-                        type="range"
-                        min="0"
-                        max="360"
-                        value={hexToHue(
-                          activeAuroraColorIdx === 1 ? auroraCol1 :
-                          activeAuroraColorIdx === 2 ? auroraCol2 :
-                          auroraCol3
-                        )}
-                        onChange={(e) => {
-                          setAuroraPreset('custom');
-                          const nextHex = hueToHex(Number(e.target.value));
-                          if (activeAuroraColorIdx === 1) setAuroraCol1(nextHex);
-                          else if (activeAuroraColorIdx === 2) setAuroraCol2(nextHex);
-                          else setAuroraCol3(nextHex);
-                        }}
-                        className="w-full h-1.5 rounded-full cursor-pointer appearance-none outline-none accent-slate-800 dark:accent-white"
-                        style={{
-                          background: 'linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)'
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* WebGL Point Cloud & Van Gogh Starry Sky Tab */}
-              {activeTab === 'pointcloud' && (
-                <div className="space-y-3.5 max-h-[19.5rem] overflow-y-auto pr-1 text-slate-800 dark:text-slate-100">
-                  
-                  {/* Master Toggle */}
-                  <div className="flex items-center justify-between p-3 bg-amber-50/70 dark:bg-amber-950/25 rounded-2xl border border-amber-200/70 dark:border-amber-900/50">
-                    <div className="flex items-center gap-2.5">
-                      <div className="p-2 bg-amber-500/15 rounded-xl text-amber-500 shadow-xs">
-                        <Sparkles className={`w-4 h-4 ${pcEnabled ? 'animate-pulse' : ''}`} />
-                      </div>
-                      <div>
-                        <span className="text-xs font-black block text-slate-800 dark:text-slate-100">
-                          Bụi Sao Rơi Lơ Lửng (Van Gogh)
-                        </span>
-                        <span className="text-[10px] text-amber-800/80 dark:text-amber-300/80 font-medium">
-                          {pcEnabled ? `${pcCount.toLocaleString()} hạt sao nhỏ rơi chậm rãi & lấp lánh 3D` : 'Đang tắt'}
-                        </span>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => updatePointCloud({ enabled: !pcEnabled })}
-                      className={`w-10 h-5 rounded-full p-0.5 transition-colors duration-200 outline-none cursor-pointer flex items-center ${
-                        pcEnabled ? 'bg-amber-500 justify-end' : 'bg-slate-300 dark:bg-slate-700 justify-start'
-                      }`}
-                    >
-                      <motion.div 
-                        layout 
-                        className="w-4 h-4 bg-white rounded-full shadow-md"
-                        transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                      />
-                    </button>
-                  </div>
-
-                  {pcEnabled && (
-                    <>
-                      {/* Shooting Star (Sao Băng Nghệ Thuật) Card */}
-                      <div className="flex items-center justify-between p-3 rounded-2xl bg-gradient-to-r from-amber-500/10 via-purple-500/10 to-indigo-500/10 border border-amber-500/25">
-                        <div className="flex items-center gap-2.5">
-                          <span className="text-base">🌠</span>
-                          <div className="flex flex-col text-left">
-                            <span className="text-xs font-black block">Sao Băng Vũ Trụ</span>
-                            <span className="text-[10px] text-amber-700/80 dark:text-amber-300/80 font-medium">
-                              {pcShootingStars ? 'Thỉnh thoảng vụt qua chéo bầu trời' : 'Đang tắt'}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {pcShootingStars && (
-                            <button
-                              type="button"
-                              onClick={() => window.dispatchEvent(new CustomEvent('trigger-shooting-star'))}
-                              className="px-2.5 py-1 text-[10px] font-extrabold bg-amber-500/20 hover:bg-amber-500/30 text-amber-800 dark:text-amber-200 rounded-lg transition-all cursor-pointer border border-amber-500/35 active:scale-95"
-                              title="Kích hoạt vệt sao băng bay qua ngay lập tức"
-                            >
-                              ✨ Ngắm sao ngay
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => updatePointCloud({ shootingStarsEnabled: !pcShootingStars })}
-                            className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-200 outline-none cursor-pointer flex items-center ${
-                              pcShootingStars ? 'bg-amber-500 justify-end' : 'bg-slate-300 dark:bg-slate-700 justify-start'
-                            }`}
-                          >
-                            <motion.div 
-                              layout 
-                              className="w-4 h-4 bg-white rounded-full shadow-md"
-                              transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                            />
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Comet Tail (Vệt Sáng Đuôi Sao Chổi Chuột) Card */}
-                      <div className="flex items-center justify-between p-3 rounded-2xl bg-gradient-to-r from-cyan-500/10 via-amber-500/10 to-blue-500/10 border border-cyan-500/25">
-                        <div className="flex items-center gap-2.5">
-                          <span className="text-base">☄️</span>
-                          <div className="flex flex-col text-left">
-                            <span className="text-xs font-black block">Đuôi Sao Chổi (Comet Tail)</span>
-                            <span className="text-[10px] text-cyan-700/80 dark:text-cyan-300/80 font-medium">
-                              {pcCometTail ? 'Vệt sáng mềm mại & tàn bụi sao theo con trỏ chuột' : 'Đang tắt'}
-                            </span>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => updatePointCloud({ cometTailEnabled: !pcCometTail })}
-                          className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-200 outline-none cursor-pointer flex items-center shrink-0 ${
-                            pcCometTail ? 'bg-cyan-500 justify-end' : 'bg-slate-300 dark:bg-slate-700 justify-start'
-                          }`}
-                        >
-                          <motion.div 
-                            layout 
-                            className="w-4 h-4 bg-white rounded-full shadow-md"
-                            transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                          />
-                        </button>
-                      </div>
-
-                      {/* Gentle Parallax Depth Slider */}
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                          <span className="flex items-center gap-1">
-                            <Compass className="w-3 h-3 text-amber-500" /> Thị Sai Không Gian (Dịu Êm, Tĩnh Lặng)
-                          </span>
-                          <span className="font-mono">{pcParallax.toFixed(2)}x</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="0.0"
-                          max="1.0"
-                          step="0.05"
-                          value={pcParallax}
-                          onChange={(e) => updatePointCloud({ parallaxStrength: Number(e.target.value) })}
-                          className="w-full accent-amber-500 cursor-pointer h-1.5 bg-slate-100 dark:bg-slate-950 rounded-full"
-                        />
-                      </div>
-
-                      {/* Color Harmonics */}
-                      <div className="space-y-1.5">
-                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
-                          Sắc Màu Hạt Sao (Van Gogh Harmonics)
-                        </span>
-                        <div className="grid grid-cols-2 gap-1.5">
-                          {[
-                            { id: 0, label: '🌌 Đêm Đầy Sao (Hổ Phách & Lam)' },
-                            { id: 1, label: '🌻 Hướng Dương & Diên Vĩ' },
-                            { id: 2, label: '☕ Cà Phê Đêm (Vàng Ấm)' },
-                            { id: 3, label: '🎨 Đồng Bộ Theme Neon' },
-                          ].map((c) => {
-                            const isSelected = pcColorMode === c.id;
-                            return (
-                              <button
-                                key={c.id}
-                                type="button"
-                                onClick={() => updatePointCloud({ colorMode: c.id })}
-                                className={`py-2 px-2.5 rounded-xl border text-[10px] font-bold transition-all cursor-pointer text-center ${
-                                  isSelected
-                                    ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400'
-                                    : 'border-slate-150 dark:border-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-950/40 text-slate-600 dark:text-slate-400'
-                                }`}
-                              >
-                                {c.label}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* Particle Count Slider (Fine Range 100 - 800) */}
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                          <span className="flex items-center gap-1">
-                            <Orbit className="w-3 h-3 text-amber-500" /> Mật độ Bụi Sao (Thoáng đãng, thanh tao)
-                          </span>
-                          <span className="font-mono">{pcCount.toLocaleString()} hạt</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="100"
-                          max="800"
-                          step="25"
-                          value={pcCount}
-                          onChange={(e) => updatePointCloud({ particleCount: Number(e.target.value) })}
-                          className="w-full accent-amber-500 cursor-pointer h-1.5 bg-slate-100 dark:bg-slate-950 rounded-full"
-                        />
-                      </div>
-
-                      {/* Speed Slider (Slow & Meditative 0.10 - 0.70) */}
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                          <span className="flex items-center gap-1">
-                            <Waves className="w-3 h-3 text-amber-500" /> Tốc độ Rơi Chậm Rãi (Thiền định)
-                          </span>
-                          <span className="font-mono">{pcSpeed.toFixed(2)}x</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="0.10"
-                          max="0.70"
-                          step="0.05"
-                          value={pcSpeed}
-                          onChange={(e) => updatePointCloud({ speed: Number(e.target.value) })}
-                          className="w-full accent-amber-500 cursor-pointer h-1.5 bg-slate-100 dark:bg-slate-950 rounded-full"
-                        />
-                      </div>
-
-                      {/* Sparkle Size Slider */}
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                          <span className="flex items-center gap-1">
-                            <Sparkle className="w-3 h-3 text-amber-500" /> Vầng Hào Quang Sao (Luminous Corona)
-                          </span>
-                          <span className="font-mono">{pcSparkleSize.toFixed(2)}x</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="0.9"
-                          max="2.2"
-                          step="0.1"
-                          value={pcSparkleSize}
-                          onChange={(e) => updatePointCloud({ sparkleSize: Number(e.target.value) })}
-                          className="w-full accent-amber-500 cursor-pointer h-1.5 bg-slate-100 dark:bg-slate-950 rounded-full"
-                        />
-                      </div>
-
-                      {/* Real-world Auto Lunar Phase Card */}
-                      {(() => {
-                        const lunar = getRealWorldMoonPhase();
-                        return (
-                          <div className="p-3 bg-gradient-to-r from-amber-500/15 via-indigo-500/10 to-blue-500/15 rounded-2xl border border-amber-500/30 flex items-center justify-between">
-                            <div className="flex items-center gap-2.5">
-                              <span className="text-xl">🌕</span>
-                              <div className="flex flex-col text-left">
-                                <span className="text-[11px] font-black text-amber-500 flex items-center gap-1">
-                                  <span>Chu kỳ Mặt Trăng Thiên Văn</span>
-                                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-300 font-bold uppercase tracking-wider">Tự Động</span>
-                                </span>
-                                <span className="text-[10px] font-semibold text-slate-700 dark:text-slate-200">
-                                  {lunar.name}
-                                </span>
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <span className="text-xs font-mono font-bold text-amber-500">{lunar.illuminated}%</span>
-                              <span className="block text-[8px] text-slate-400">chiếu sáng</span>
-                            </div>
-                          </div>
-                        );
-                      })()}
-
-                      {/* Poetic Interaction Tip */}
-                      <div className="p-3 bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-blue-500/10 rounded-2xl border border-amber-500/20 text-[10px] text-slate-600 dark:text-slate-300 leading-relaxed flex items-start gap-2">
-                        <span className="text-sm shrink-0">🎨</span>
-                        <span>
-                          <strong>Không Gian Vũ Trụ 3D & Núi Neon:</strong> Mặt trăng tự động cập nhật chu kỳ trăng thực tế theo thời gian. Sao băng 3D xuất hiện từ chiều sâu không gian (Z âm) và lao về phía trước, chìm sau dãy núi rực sắc neon. Khi vệt sao chổi quét qua đỉnh núi, những hạt bụi sao lấp lánh sẽ bừng sáng theo sắc độ của núi!
-                        </span>
-                      </div>
-                    </>
-                  )}
-
-                </div>
-              )}
-              <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-950/30 p-3 rounded-2xl border border-slate-150 dark:border-slate-800/50 mt-1">
-                <div className="flex flex-col gap-0.5 text-left">
-                  <span className="text-xs font-black flex items-center gap-1">
-                    <Layers className="w-3.5 h-3.5 text-indigo-500" /> Giao diện Kính mờ
-                  </span>
-                  <span className="text-[9px] text-slate-400 dark:text-slate-500 font-semibold">Nhìn xuyên thấu qua các bảng thẻ UI</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setGlassmorphic(!glassmorphic)}
-                  className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-200 outline-none cursor-pointer flex items-center ${
-                    glassmorphic ? 'bg-indigo-600 justify-end' : 'bg-slate-300 dark:bg-slate-700 justify-start'
-                  }`}
-                >
-                  <motion.div 
-                    layout 
-                    className="w-4 h-4 bg-white rounded-full shadow-md"
-                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                  />
-                </button>
+                )}
               </div>
 
             </motion.div>

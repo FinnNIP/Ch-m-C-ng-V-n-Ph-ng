@@ -230,8 +230,8 @@ const PC_VERTEX_SHADER = `
 
       v_alpha = edgeFade * mix(0.15, 0.65, twinkle) * mix(0.70, 1.0, u_is_dark);
 
-      // Point size clamp based on screen viewport - gentle and elegant proportions
-      gl_PointSize = clamp(size * (u_resolution.y / 768.0) * 0.72, 0.0, 18.0);
+      // Point size clamp based on screen viewport - allows wide dynamic range up to 48px
+      gl_PointSize = clamp(size * (u_resolution.y / 768.0) * 0.72, 0.0, 48.0);
       gl_Position = vec4(pos, 0.0, 1.0);
   }
 `;
@@ -308,15 +308,12 @@ interface ShootingStar {
   targetType: 'mountain' | 'sea';
 }
 
-// Glowing Mountain Silhouette & Stroke Event when shooting star lands on the mountain
-interface MountainStrokeGlow {
+// Subtle, gentle micro-spark event when shooting star finishes its path ("nhẹ nhàng nhỏ nhẹ thôi, tuyệt đối không có vòng tròn to")
+interface SubtleImpactGlint {
   id: number;
   x: number;
   y: number;
-  color: string;      // Matched mountain neon color (primary or secondary)
-  span: number;       // horizontal extent along ridge
-  maxSpan: number;
-  alpha: number;      // 1.0 -> 0.0
+  alpha: number;
   sparks: Array<{
     x: number;
     y: number;
@@ -334,18 +331,6 @@ interface CometTrailPoint {
   y: number;
   time: number;
   size: number;
-}
-
-interface CometStardust {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  alpha: number;
-  size: number;
-  color: string;
-  rotation: number;
-  rotSpeed: number;
 }
 
 // Dissolved stardust particle when comet cursor touches a star ("tan biến dạng particle nhỏ nhỏ lắng xuống tan biến trong hư vô")
@@ -385,7 +370,8 @@ interface StarEntity {
 export interface PointCloudSettings {
   enabled: boolean;
   particleCount: number;      // default ~280
-  sparkleSize: number;        // 0.9 .. 2.2
+  sparkleSize: number;        // 0.3 .. 3.5 (Độ to nhỏ của hạt sao)
+  cometSize: number;          // 0.3 .. 3.5 (Độ to nhỏ sao chổi của con chuột)
   colorMode: number;          // 0: Van Gogh Starry Gold, 1: Sunflowers, 2: Café Terrace, 3: Neon Sync
   speed: number;              // 0.10 .. 0.70
   parallaxStrength: number;   // 0.0 .. 1.0 (default 0.15)
@@ -410,6 +396,7 @@ export const WebGLPointCloud: React.FC<{
     enabled: localStorage.getItem('pc_enabled') !== 'false',
     particleCount: Number(localStorage.getItem('pc_count') ?? '280'),
     sparkleSize: Number(localStorage.getItem('pc_size') ?? '1.55'),
+    cometSize: Number(localStorage.getItem('pc_comet_size') ?? '1.0'),
     colorMode: Number(localStorage.getItem('pc_color_mode') ?? '0'),
     speed: Number(localStorage.getItem('pc_speed') ?? '0.30'),
     parallaxStrength: Number(localStorage.getItem('pc_parallax') ?? '0.15'),
@@ -417,11 +404,14 @@ export const WebGLPointCloud: React.FC<{
     cometTailEnabled: localStorage.getItem('pc_comet_tail') !== 'false',
   }));
 
+  const settingsRef = useRef<PointCloudSettings>(settings);
+  settingsRef.current = settings;
+
   const mouseRef = useRef({ x: 0.0, y: 0.0 });
   const targetMouseRef = useRef({ x: 0.0, y: 0.0 });
   const shockwaveRef = useRef({ x: 0.0, y: 0.0, radius: 0.0, active: false });
   const shootingStarsRef = useRef<ShootingStar[]>([]);
-  const mountainGlowsRef = useRef<MountainStrokeGlow[]>([]);
+  const subtleGlintsRef = useRef<SubtleImpactGlint[]>([]);
 
   // Star entities list for interactive star collision and dissolution
   const starsRef = useRef<StarEntity[]>([]);
@@ -429,7 +419,6 @@ export const WebGLPointCloud: React.FC<{
 
   // Comet Tail tracking refs
   const cometTrailRef = useRef<CometTrailPoint[]>([]);
-  const cometSparksRef = useRef<CometStardust[]>([]);
   const lastMousePosRef = useRef<{ x: number; y: number; time: number }>({ x: 0, y: 0, time: 0 });
 
   // Helper to spawn a shooting star with realistic atmospheric entry
@@ -450,7 +439,7 @@ export const WebGLPointCloud: React.FC<{
     const angle = isFromLeft 
       ? (Math.PI / 180) * (20 + Math.random() * 22)
       : (Math.PI / 180) * (138 + Math.random() * 22);
-    const initialSpeed = 220 + Math.random() * 110;
+    const initialSpeed = 420 + Math.random() * 180;
 
     const colors = [
       '#ffe082', // Warm Van Gogh Gold
@@ -460,7 +449,7 @@ export const WebGLPointCloud: React.FC<{
       '#ffcc80'  // Golden Honey Lantern
     ];
     const color = colors[Math.floor(Math.random() * colors.length)];
-    const targetType: 'mountain' | 'sea' = Math.random() < 0.45 ? 'sea' : 'mountain';
+    const targetType: 'mountain' | 'sea' = Math.random() < 0.52 ? 'sea' : 'mountain';
 
     shootingStarsRef.current.push({
       id: Date.now() + Math.random(),
@@ -469,7 +458,7 @@ export const WebGLPointCloud: React.FC<{
       vx: Math.cos(angle) * initialSpeed,
       vy: Math.sin(angle) * initialSpeed,
       opacity: 0,
-      size: 3.4 + Math.random() * 2.0,
+      size: 1.0 + Math.random() * 0.35, // Slender, elegant, natural shooting star
       color,
       impacted: false,
       history: [],
@@ -477,116 +466,32 @@ export const WebGLPointCloud: React.FC<{
     });
   };
 
-  // Trigger water splash & ripple when shooting star plunges into the river / sea
-  const triggerSeaImpact = (x: number, y: number, starColor: string) => {
-    // Water ripple shockwave in WebGLBackground
-    window.dispatchEvent(new CustomEvent('meteor-mountain-impact', {
-      detail: {
-        clientX: x,
-        clientY: y,
-        color: '#00f2fe'
-      }
-    }));
+  // Trigger gentle micro-spark when shooting star completes its path ("nhẹ nhàng nhỏ nhẹ thôi, tuyệt đối không có vòng tròn to")
+  const triggerSubtleImpact = (x: number, y: number, starColor: string) => {
+    const sparks: SubtleImpactGlint['sparks'] = [];
+    const count = 4 + Math.floor(Math.random() * 3); // 4 to 6 tiny micro-sparkles
+    const sparkColors = ['#ffffff', '#fff9c4', starColor];
 
-    // Water droplet sparks splashing upwards from the river
-    const sparks: MountainStrokeGlow['sparks'] = [];
-    const count = 10 + Math.floor(Math.random() * 8);
-    const sparkColors = ['#ffffff', '#80d8ff', '#00f2fe', starColor];
     for (let i = 0; i < count; i++) {
-      const angle = -Math.PI * 0.5 + (Math.random() - 0.5) * 1.8;
-      const speed = 30 + Math.random() * 60;
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 10 + Math.random() * 20;
       sparks.push({
-        x: x + (Math.random() * 8 - 4),
-        y: y + (Math.random() * 4 - 2),
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed - 15,
-        alpha: 0.95,
-        size: 1.2 + Math.random() * 2.0,
-        color: sparkColors[Math.floor(Math.random() * sparkColors.length)],
-        decay: 1.2 + Math.random() * 0.7
-      });
-    }
-
-    mountainGlowsRef.current.push({
-      id: Date.now() + Math.random(),
-      x,
-      y,
-      color: '#00f2fe',
-      span: 0,
-      maxSpan: 55 + Math.random() * 30,
-      alpha: 0.80,
-      sparks
-    });
-  };
-
-  // Trigger glowing stroke & silhouette of the mountain ridge where the shooting star strikes
-  const triggerMountainStrokeGlow = (x: number, y: number, mountainColor: string) => {
-    const sparks: MountainStrokeGlow['sparks'] = [];
-    const sparkCount = 8 + Math.floor(Math.random() * 6);
-    const sparkColors = ['#fff8e1', '#ffffff', mountainColor];
-
-    for (let i = 0; i < sparkCount; i++) {
-      const angle = -Math.PI * 0.5 + (Math.random() - 0.5) * 1.2;
-      const speed = 25 + Math.random() * 55;
-      sparks.push({
-        x: x + (Math.random() * 6 - 3),
+        x: x + (Math.random() * 4 - 2),
         y: y + (Math.random() * 2 - 1),
         vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
-        alpha: 0.9,
-        size: 1.0 + Math.random() * 1.8,
+        vy: Math.sin(angle) * speed - 5.0,
+        alpha: 0.85,
+        size: 0.8 + Math.random() * 0.5, // Tiny: 0.8px - 1.3px
         color: sparkColors[Math.floor(Math.random() * sparkColors.length)],
-        decay: 1.1 + Math.random() * 0.6
+        decay: 2.8 + Math.random() * 1.0 // Quick gentle fade in ~0.3s
       });
     }
 
-    // Delicate poetic span along mountain slope
-    mountainGlowsRef.current.push({
+    subtleGlintsRef.current.push({
       id: Date.now() + Math.random(),
       x,
       y,
-      color: mountainColor,
-      span: 0,
-      maxSpan: 65 + Math.random() * 25,
-      alpha: 0.70,
-      sparks
-    });
-  };
-
-  // Trigger interactive sparkle burst & glowing bloom when comet tail sweeps across mountain stroke
-  const lastSweepTimeRef = useRef(0);
-  const triggerMountainSweepGlow = (x: number, y: number, mountainColor: string, speedFactor: number) => {
-    const now = performance.now();
-    if (now - lastSweepTimeRef.current < 65) return;
-    lastSweepTimeRef.current = now;
-
-    const sparks: MountainStrokeGlow['sparks'] = [];
-    const count = 5 + Math.floor(Math.random() * 5);
-    const sparkColors = ['#ffffff', '#fff9c4', mountainColor, primaryColor, secondaryColor];
-
-    for (let i = 0; i < count; i++) {
-      const angle = -Math.PI * 0.5 + (Math.random() - 0.5) * 1.6;
-      const sp = 20 + Math.random() * (45 + Math.min(speedFactor * 35, 50));
-      sparks.push({
-        x: x + (Math.random() * 8 - 4),
-        y: y + (Math.random() * 4 - 2),
-        vx: Math.cos(angle) * sp,
-        vy: Math.sin(angle) * sp - 15,
-        alpha: 0.95,
-        size: 1.0 + Math.random() * 1.8,
-        color: sparkColors[Math.floor(Math.random() * sparkColors.length)],
-        decay: 1.4 + Math.random() * 0.8
-      });
-    }
-
-    mountainGlowsRef.current.push({
-      id: now + Math.random(),
-      x,
-      y,
-      color: mountainColor,
-      span: 0,
-      maxSpan: 90 + Math.random() * 50,
-      alpha: 0.85,
+      alpha: 0.75,
       sparks
     });
   };
@@ -601,6 +506,7 @@ export const WebGLPointCloud: React.FC<{
           if (detail.enabled !== undefined) localStorage.setItem('pc_enabled', String(detail.enabled));
           if (detail.particleCount !== undefined) localStorage.setItem('pc_count', String(detail.particleCount));
           if (detail.sparkleSize !== undefined) localStorage.setItem('pc_size', String(detail.sparkleSize));
+          if (detail.cometSize !== undefined) localStorage.setItem('pc_comet_size', String(detail.cometSize));
           if (detail.colorMode !== undefined) localStorage.setItem('pc_color_mode', String(detail.colorMode));
           if (detail.speed !== undefined) localStorage.setItem('pc_speed', String(detail.speed));
           if (detail.parallaxStrength !== undefined) localStorage.setItem('pc_parallax', String(detail.parallaxStrength));
@@ -626,18 +532,18 @@ export const WebGLPointCloud: React.FC<{
     };
   }, []);
 
-  // Organic Shooting Star Low Frequency Timer (Every 10 - 22s)
+  // Organic Shooting Star Natural Frequency Timer (Regular celestial visitors across the sky)
   useEffect(() => {
     if (!settings.shootingStarsEnabled || !settings.enabled) return;
 
     let timeoutId: number;
 
     const scheduleNext = () => {
-      const delay = 10000 + Math.random() * 12000;
+      const delay = 2600 + Math.random() * 3200;
       timeoutId = window.setTimeout(() => {
         spawnShootingStar();
-        if (Math.random() < 0.28) {
-          setTimeout(spawnShootingStar, 500 + Math.random() * 700);
+        if (Math.random() < 0.35) {
+          setTimeout(spawnShootingStar, 400 + Math.random() * 600);
         }
         scheduleNext();
       }, delay);
@@ -646,7 +552,7 @@ export const WebGLPointCloud: React.FC<{
     const initialTimer = window.setTimeout(() => {
       spawnShootingStar();
       scheduleNext();
-    }, 2400);
+    }, 600);
 
     return () => {
       clearTimeout(initialTimer);
@@ -654,7 +560,7 @@ export const WebGLPointCloud: React.FC<{
     };
   }, [settings.shootingStarsEnabled, settings.enabled]);
 
-  // Smooth mouse tracking, Slender Comet Tail recording & click ripple
+  // Smooth mouse tracking, Radiant Comet Tail recording & click ripple
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
       const clientX = e.clientX;
@@ -667,58 +573,22 @@ export const WebGLPointCloud: React.FC<{
         y: (1.0 - clientY / window.innerHeight) * 2.0 - 1.0
       };
 
-      // Record Slender Comet Tail node
-      if (settings.cometTailEnabled && settings.enabled) {
-        const last = lastMousePosRef.current;
-        const dx = clientX - last.x;
-        const dy = clientY - last.y;
-        const dt = Math.max(now - last.time, 1);
-        const mouseSpeed = Math.hypot(dx, dy) / dt;
-
+      // Record celestial comet trail node (flowing, slender, elegant - zero trailing dust)
+      if (settingsRef.current.cometTailEnabled && settingsRef.current.enabled) {
         lastMousePosRef.current = { x: clientX, y: clientY, time: now };
+        const cScale = Math.max(0.2, settingsRef.current.cometSize ?? 1.0);
 
-        // Add slender trail node (narrow width, graceful, airy)
         cometTrailRef.current.unshift({
           x: clientX,
           y: clientY,
           time: now,
-          size: Math.min(3.2 + mouseSpeed * 1.0, 5.2)
+          size: 2.8 * cScale
         });
 
-        // Limit trail length for slender elegance
-        if (cometTrailRef.current.length > 14) {
+        // Graceful trail length scaled with comet size
+        const maxLen = Math.round(22 * Math.sqrt(cScale));
+        if (cometTrailRef.current.length > maxLen) {
           cometTrailRef.current.pop();
-        }
-
-        // Check if mouse / comet tail sweeps across the mountain ridge stroke
-        const ridgeY = getMountainRidgeScreenY(clientX, window.innerWidth, window.innerHeight, now * 0.001, 0.9);
-        const prevRidgeY = getMountainRidgeScreenY(last.x, window.innerWidth, window.innerHeight, now * 0.001, 0.9);
-        const distToRidge = Math.abs(clientY - ridgeY);
-        const crossedRidge = (last.y < prevRidgeY && clientY >= ridgeY) || (last.y > prevRidgeY && clientY <= ridgeY);
-
-        if (distToRidge < 32 || crossedRidge) {
-          const mountainCol = getTopmostMountainColor(clientX, window.innerWidth, window.innerHeight, now * 0.001, primaryColor, secondaryColor, 0.9);
-          triggerMountainSweepGlow(clientX, ridgeY, mountainCol, mouseSpeed);
-        }
-
-        // Spawn delicate stardust sparks in the comet's wake
-        if (mouseSpeed > 0.08) {
-          const sparkColors = ['#fff8e1', '#ffe082', '#80d8ff', '#ffffff'];
-          if (Math.random() < 0.55) {
-            const angle = Math.atan2(dy, dx) + Math.PI + (Math.random() - 0.5) * 1.2;
-            const sparkVel = 18 + Math.random() * 45;
-            cometSparksRef.current.push({
-              x: clientX + (Math.random() * 4 - 2),
-              y: clientY + (Math.random() * 4 - 2),
-              vx: Math.cos(angle) * sparkVel,
-              vy: Math.sin(angle) * sparkVel + 8.0,
-              alpha: 0.75,
-              size: 0.8 + Math.random() * 1.3,
-              color: sparkColors[Math.floor(Math.random() * sparkColors.length)],
-              rotation: Math.random() * Math.PI,
-              rotSpeed: (Math.random() - 0.5) * 3.0
-            });
-          }
         }
       }
     };
@@ -730,13 +600,6 @@ export const WebGLPointCloud: React.FC<{
         radius: 0.02,
         active: true
       };
-      window.dispatchEvent(new CustomEvent('meteor-mountain-impact', {
-        detail: {
-          clientX: e.clientX,
-          clientY: e.clientY,
-          color: primaryColor
-        }
-      }));
     };
 
     const onDblClick = () => {
@@ -752,21 +615,17 @@ export const WebGLPointCloud: React.FC<{
           y: (1.0 - t.clientY / window.innerHeight) * 2.0 - 1.0
         };
 
-        if (settings.cometTailEnabled && settings.enabled) {
+        if (settingsRef.current.cometTailEnabled && settingsRef.current.enabled) {
+          const cScale = Math.max(0.2, settingsRef.current.cometSize ?? 1.0);
           cometTrailRef.current.unshift({
             x: t.clientX,
             y: t.clientY,
             time: now,
-            size: 4.0
+            size: 2.8 * cScale
           });
-          if (cometTrailRef.current.length > 12) {
+          const maxLen = Math.round(22 * Math.sqrt(cScale));
+          if (cometTrailRef.current.length > maxLen) {
             cometTrailRef.current.pop();
-          }
-
-          const ridgeY = getMountainRidgeScreenY(t.clientX, window.innerWidth, window.innerHeight, now * 0.001, 0.9);
-          if (Math.abs(t.clientY - ridgeY) < 36) {
-            const mountainCol = getTopmostMountainColor(t.clientX, window.innerWidth, window.innerHeight, now * 0.001, primaryColor, secondaryColor, 0.9);
-            triggerMountainSweepGlow(t.clientX, ridgeY, mountainCol, 0.6);
           }
         }
       }
@@ -817,27 +676,13 @@ export const WebGLPointCloud: React.FC<{
       if (settings.shootingStarsEnabled) {
         const meteors = shootingStarsRef.current;
 
-        // Clip meteors strictly to the sky region ABOVE the mountain crest
         ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.lineTo(width, 0);
-
-        const sampleSteps = 50;
-        for (let s = sampleSteps; s >= 0; s--) {
-          const sx = (s / sampleSteps) * width;
-          const sy = getMountainRidgeScreenY(sx, width, height, timeNow * 0.001, 0.9);
-          ctx.lineTo(sx, sy);
-        }
-        ctx.closePath();
-        ctx.clip();
-
         for (let i = meteors.length - 1; i >= 0; i--) {
           const m = meteors[i];
 
           // Physics update: gravity acceleration downwards & subtle air friction
-          const gravity = 680; // px/sec^2
-          const airResistance = 0.20;
+          const gravity = 650; // px/sec^2
+          const airResistance = 0.18;
           m.vy += gravity * dt;
           m.vx -= m.vx * airResistance * dt;
           m.vy -= m.vy * (airResistance * 0.35) * dt;
@@ -845,89 +690,92 @@ export const WebGLPointCloud: React.FC<{
           m.x += m.vx * dt;
           m.y += m.vy * dt;
 
-          // Record position history across 12-15 frames for smooth connected trail
+          // Record position history across 14-18 frames for rich connected trail
           m.history.unshift({ x: m.x, y: m.y });
-          if (m.history.length > 15) {
+          if (m.history.length > 18) {
             m.history.pop();
           }
 
           // Smooth fade-in on entry
           if (!m.impacted) {
-            m.opacity = Math.min(1.0, m.opacity + dt * 3.5);
+            m.opacity = Math.min(1.0, m.opacity + dt * 4.0);
           } else {
-            // After hitting mountain stroke, fade out remaining trail
-            m.opacity = Math.max(0.0, m.opacity - dt * 3.2);
+            // After hitting target, fade out remaining trail
+            m.opacity = Math.max(0.0, m.opacity - dt * 2.8);
           }
 
-          // Check if meteor's head has reached the exact mountain skyline stroke
+          // Check if meteor's head has reached its target:
           const ridgeY = getMountainRidgeScreenY(m.x, width, height, timeNow * 0.001, 0.9);
-          if (m.y >= ridgeY && !m.impacted) {
-            m.impacted = true;
-            m.y = ridgeY; // snap right onto the mountain stroke!
-            
-            // Match the exact neon color of the mountain ridge struck by the meteor
-            const mountainCol = getTopmostMountainColor(m.x, width, height, timeNow * 0.001, primaryColor, secondaryColor, 0.9);
-            triggerMountainStrokeGlow(m.x, ridgeY, mountainCol);
 
-            // Trigger energetic shockwave distortion in WebGLBackground!
-            window.dispatchEvent(new CustomEvent('meteor-mountain-impact', {
-              detail: {
-                clientX: m.x,
-                clientY: ridgeY,
-                color: mountainCol
+          if (!m.impacted) {
+            if (m.targetType === 'mountain') {
+              // Reaches the mountain peak / ridge
+              if (m.y >= ridgeY) {
+                m.impacted = true;
+                m.y = ridgeY;
+                const mountainCol = getTopmostMountainColor(m.x, width, height, timeNow * 0.001, primaryColor, secondaryColor, 0.9);
+                triggerSubtleImpact(m.x, ridgeY, mountainCol);
               }
-            }));
+            } else {
+              // Reaches the river / water level
+              const seaImpactY = Math.max(ridgeY + 38, height * 0.74 + Math.sin(m.x * 0.015) * 22);
+              if (m.y >= seaImpactY) {
+                m.impacted = true;
+                m.y = seaImpactY;
+                triggerSubtleImpact(m.x, seaImpactY, m.color);
+              }
+            }
           }
 
-          // DRAW 10-15 FRAME CONNECTED MOTION TRAIL
+          // SLENDER, NATURAL SHOOTING STAR TRAIL (Delicate, razor-fine, poetic)
           if (m.history.length > 1) {
             for (let k = 0; k < m.history.length - 1; k++) {
               const p0 = m.history[k];
               const p1 = m.history[k + 1];
               const tRatio = 1.0 - k / m.history.length;
-              const segAlpha = m.opacity * Math.pow(tRatio, 1.35);
-              const segWidth = Math.max(0.6, m.size * (0.35 + 1.15 * tRatio));
+              const segAlpha = m.opacity * Math.pow(tRatio, 1.3);
+              const segWidth = Math.max(0.5, m.size * (0.35 + 0.85 * tRatio));
 
-              // Outer luminous ribbon (soft and slender)
+              // Soft luminous atmospheric trail glow
               ctx.beginPath();
               ctx.moveTo(p0.x, p0.y);
               ctx.lineTo(p1.x, p1.y);
-              ctx.strokeStyle = `${m.color}${Math.floor(segAlpha * 95).toString(16).padStart(2, '0')}`;
+              ctx.strokeStyle = `${m.color}${Math.floor(segAlpha * 140).toString(16).padStart(2, '0')}`;
               ctx.lineWidth = segWidth * 1.5;
               ctx.lineCap = 'round';
               ctx.stroke();
 
-              // Radiant soft starlight inner core ribbon
+              // Slender starlight core streak
               ctx.beginPath();
               ctx.moveTo(p0.x, p0.y);
               ctx.lineTo(p1.x, p1.y);
-              ctx.strokeStyle = `rgba(255, 255, 255, ${segAlpha * 0.60})`;
-              ctx.lineWidth = segWidth * 0.75;
+              ctx.strokeStyle = `rgba(255, 255, 255, ${segAlpha * 0.92})`;
+              ctx.lineWidth = Math.max(0.4, segWidth * 0.75);
               ctx.lineCap = 'round';
               ctx.stroke();
             }
           }
 
-          // Glowing meteor nucleus head (gentle starlight pearl)
-          if (!m.impacted && m.opacity > 0.1) {
-            const headGlow = ctx.createRadialGradient(m.x, m.y, 0, m.x, m.y, m.size * 3.0);
-            headGlow.addColorStop(0, `rgba(255, 255, 255, ${m.opacity * 0.75})`);
-            headGlow.addColorStop(0.35, `${m.color}${Math.floor(m.opacity * 130).toString(16).padStart(2, '0')}`);
+          // Delicate starlight pinprick head (compact, sleek, natural - no bulky flare)
+          if (!m.impacted && m.opacity > 0.05) {
+            const headGlow = ctx.createRadialGradient(m.x, m.y, 0, m.x, m.y, m.size * 2.2);
+            headGlow.addColorStop(0, `rgba(255, 255, 255, ${m.opacity * 0.95})`);
+            headGlow.addColorStop(0.40, `${m.color}${Math.floor(m.opacity * 160).toString(16).padStart(2, '0')}`);
             headGlow.addColorStop(1, 'rgba(255, 255, 255, 0)');
 
             ctx.beginPath();
-            ctx.arc(m.x, m.y, m.size * 3.0, 0, Math.PI * 2);
+            ctx.arc(m.x, m.y, m.size * 2.2, 0, Math.PI * 2);
             ctx.fillStyle = headGlow;
             ctx.fill();
 
-            // Delicate starlight cross glint
-            ctx.strokeStyle = `rgba(255, 255, 255, ${m.opacity * 0.50})`;
+            // Subtle tiny needle glint
+            ctx.strokeStyle = `rgba(255, 255, 255, ${m.opacity * 0.85})`;
             ctx.lineWidth = 0.8;
             ctx.beginPath();
-            ctx.moveTo(m.x - m.size * 2.2, m.y);
-            ctx.lineTo(m.x + m.size * 2.2, m.y);
-            ctx.moveTo(m.x, m.y - m.size * 2.2);
-            ctx.lineTo(m.x, m.y + m.size * 2.2);
+            ctx.moveTo(m.x - m.size * 1.6, m.y);
+            ctx.lineTo(m.x + m.size * 1.6, m.y);
+            ctx.moveTo(m.x, m.y - m.size * 1.6);
+            ctx.lineTo(m.x, m.y + m.size * 1.6);
             ctx.stroke();
           }
 
@@ -936,117 +784,39 @@ export const WebGLPointCloud: React.FC<{
             meteors.splice(i, 1);
           }
         }
-
-        ctx.restore(); // End mountain sky clipping
+        ctx.restore();
       }
 
-      // --- 2. RENDER MOUNTAIN SILHOUETTE & STROKE GLOW (Matches mountain color & clearly shows mountain shape) ---
-      const strokeGlows = mountainGlowsRef.current;
-      for (let i = strokeGlows.length - 1; i >= 0; i--) {
-        const glow = strokeGlows[i];
-        glow.span += (glow.maxSpan - glow.span) * dt * 4.5;
-        glow.alpha -= dt * 0.85; // glows and fades over ~1.2s
-
-        if (glow.alpha <= 0) {
-          strokeGlows.splice(i, 1);
+      // --- 2. RENDER GENTLE SUBTLE MICRO-GLINTS ON IMPACT (Nhẹ nhàng nhỏ nhẹ, tuyệt đối không có vòng tròn to) ---
+      const glints = subtleGlintsRef.current;
+      for (let i = glints.length - 1; i >= 0; i--) {
+        const g = glints[i];
+        g.alpha -= dt * 2.2; // Quick gentle fade in ~0.3s
+        if (g.alpha <= 0) {
+          glints.splice(i, 1);
           continue;
         }
 
         ctx.save();
-
-        const span = glow.span;
-        const startX = Math.max(0, glow.x - span);
-        const endX = Math.min(width, glow.x + span);
-        const stepPx = 4;
-
-        // 1. FILL MOUNTAIN BODY SILHOUETTE BENEATH CREST (Shows true triangular / undulating shape of the mountain)
-        ctx.beginPath();
-        let isFirst = true;
-        for (let sx = startX; sx <= endX; sx += stepPx) {
-          const sy = getMountainRidgeScreenY(sx, width, height, timeNow * 0.001, 0.9);
-          if (isFirst) {
-            ctx.moveTo(sx, sy);
-            isFirst = false;
-          } else {
-            ctx.lineTo(sx, sy);
-          }
-        }
-        ctx.lineTo(endX, height);
-        ctx.lineTo(startX, height);
-        ctx.closePath();
-
-        const mountainBodyGrad = ctx.createLinearGradient(0, glow.y - 10, 0, glow.y + 160);
-        mountainBodyGrad.addColorStop(0, `${glow.color}${Math.floor(glow.alpha * 70).toString(16).padStart(2, '0')}`);
-        mountainBodyGrad.addColorStop(0.35, `${glow.color}${Math.floor(glow.alpha * 30).toString(16).padStart(2, '0')}`);
-        mountainBodyGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-        ctx.fillStyle = mountainBodyGrad;
-        ctx.fill();
-
-        // 2. TRACE & STROKE THE DELICATE MOUNTAIN CREST OUTLINE (Slender, graceful hairline stroke)
-        ctx.beginPath();
-        isFirst = true;
-        for (let sx = startX; sx <= endX; sx += stepPx) {
-          const sy = getMountainRidgeScreenY(sx, width, height, timeNow * 0.001, 0.9);
-          if (isFirst) {
-            ctx.moveTo(sx, sy);
-            isFirst = false;
-          } else {
-            ctx.lineTo(sx, sy);
-          }
-        }
-
-        // Gradient along mountain crest centered at impact X
-        const strokeGrad = ctx.createLinearGradient(glow.x - span, 0, glow.x + span, 0);
-        strokeGrad.addColorStop(0, 'rgba(255, 255, 255, 0)');
-        strokeGrad.addColorStop(0.35, `${glow.color}${Math.floor(glow.alpha * 110).toString(16).padStart(2, '0')}`);
-        strokeGrad.addColorStop(0.50, `rgba(255, 255, 255, ${glow.alpha * 0.65})`);
-        strokeGrad.addColorStop(0.65, `${glow.color}${Math.floor(glow.alpha * 110).toString(16).padStart(2, '0')}`);
-        strokeGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
-
-        // Slender luminous mountain neon stroke
-        ctx.strokeStyle = strokeGrad;
-        ctx.lineWidth = 2.4;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.stroke();
-
-        // Crisp hairline starlight peak wire
-        ctx.strokeStyle = `rgba(255, 255, 255, ${glow.alpha * 0.55})`;
-        ctx.lineWidth = 1.0;
-        ctx.stroke();
-
-        // Soft, gentle starlight contact aura on the mountain stroke (subtle, non-blinding)
-        const spotGlow = ctx.createRadialGradient(glow.x, glow.y, 0, glow.x, glow.y, span * 0.45);
-        spotGlow.addColorStop(0, `rgba(255, 255, 255, ${glow.alpha * 0.40})`);
-        spotGlow.addColorStop(0.40, `${glow.color}${Math.floor(glow.alpha * 80).toString(16).padStart(2, '0')}`);
-        spotGlow.addColorStop(1, 'rgba(255, 255, 255, 0)');
-
-        ctx.beginPath();
-        ctx.arc(glow.x, glow.y, span * 0.45, 0, Math.PI * 2);
-        ctx.fillStyle = spotGlow;
-        ctx.fill();
-
-        // Delicate stardust sparks splashing along the mountain slope
-        for (let s = glow.sparks.length - 1; s >= 0; s--) {
-          const sp = glow.sparks[s];
-          sp.vy += dt * 25.0;
+        for (let s = g.sparks.length - 1; s >= 0; s--) {
+          const sp = g.sparks[s];
           sp.x += sp.vx * dt;
           sp.y += sp.vy * dt;
+          sp.vy += dt * 35.0; // Gentle gravity
           sp.alpha -= dt * sp.decay;
-          sp.size *= 0.97;
+          sp.size *= 0.95;
 
-          if (sp.alpha <= 0 || sp.size <= 0.3) {
-            glow.sparks.splice(s, 1);
+          if (sp.alpha <= 0 || sp.size <= 0.25) {
+            g.sparks.splice(s, 1);
             continue;
           }
 
           ctx.beginPath();
           ctx.arc(sp.x, sp.y, sp.size, 0, Math.PI * 2);
           ctx.fillStyle = sp.color;
-          ctx.globalAlpha = Math.max(0, sp.alpha * glow.alpha);
+          ctx.globalAlpha = Math.max(0, sp.alpha * g.alpha);
           ctx.fill();
         }
-
         ctx.restore();
       }
 
@@ -1096,10 +866,10 @@ export const WebGLPointCloud: React.FC<{
         ctx.restore();
       }
 
-      // --- 4. RENDER SLENDER, AIRY COMET TAIL (Fast fade-out, steep needle taper) ---
+      // --- 4. RENDER CELESTIAL COMET TAIL & ELEGANT STAR HEAD (Tinh tế, thanh thoát, không bụi) ---
       if (settings.cometTailEnabled && cometTrailRef.current.length > 1) {
         const trail = cometTrailRef.current;
-        const maxAge = 180; // Fast fade-out (180ms: completely prevents heavy smears)
+        const maxAge = 240; // Silky responsive celestial ribbon (~0.24s lifespan)
 
         // Prune stale trail nodes
         while (trail.length > 1 && (timeNow - trail[trail.length - 1].time) > maxAge) {
@@ -1111,14 +881,14 @@ export const WebGLPointCloud: React.FC<{
           ctx.lineCap = 'round';
           ctx.lineJoin = 'round';
 
-          // Pass 1: Whisper-thin starlight aura (tapering down smoothly)
+          // Pass 1: Luminous ethereal outer aura ribbon
           for (let i = 0; i < trail.length - 1; i++) {
             const p1 = trail[i];
             const p2 = trail[i + 1];
             const ageRatio = (timeNow - p1.time) / maxAge;
             const t = Math.max(0, 1.0 - ageRatio);
-            const alpha = Math.pow(t, 2.2) * 0.20;
-            const strokeW = Math.max(0.4, p1.size * 1.4 * Math.pow(t, 1.8));
+            const alpha = Math.pow(t, 1.3) * 0.30;
+            const strokeW = Math.max(0.5, p1.size * 1.1 * Math.pow(t, 1.2));
 
             ctx.beginPath();
             ctx.moveTo(p1.x, p1.y);
@@ -1128,19 +898,19 @@ export const WebGLPointCloud: React.FC<{
             ctx.stroke();
           }
 
-          // Pass 2: Slender golden starlight ribbon (steep cubic needle-taper to 0)
+          // Pass 2: Radiant starlight inner core ribbon
           for (let i = 0; i < trail.length - 1; i++) {
             const p1 = trail[i];
             const p2 = trail[i + 1];
             const ageRatio = (timeNow - p1.time) / maxAge;
             const t = Math.max(0, 1.0 - ageRatio);
-            const alpha = Math.pow(t, 1.6) * 0.70;
-            const strokeW = Math.max(0.2, p1.size * Math.pow(t, 2.5)); // Steep cubic taper to 0
+            const alpha = Math.pow(t, 1.1) * 0.85;
+            const strokeW = Math.max(0.4, p1.size * 0.55 * Math.pow(t, 1.4));
 
             const grad = ctx.createLinearGradient(p1.x, p1.y, p2.x, p2.y);
-            grad.addColorStop(0, `rgba(255, 255, 245, ${alpha})`);
-            grad.addColorStop(0.5, `rgba(255, 224, 130, ${alpha * 0.65})`);
-            grad.addColorStop(1, `rgba(255, 183, 77, ${alpha * 0.30})`);
+            grad.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
+            grad.addColorStop(0.45, `rgba(255, 240, 180, ${alpha * 0.80})`);
+            grad.addColorStop(1, `rgba(128, 216, 255, ${alpha * 0.15})`);
 
             ctx.beginPath();
             ctx.moveTo(p1.x, p1.y);
@@ -1150,77 +920,55 @@ export const WebGLPointCloud: React.FC<{
             ctx.stroke();
           }
 
-          // Pass 3: Radiant delicate Comet Nucleus Head
+          // Pass 3: Pure, enchanting Celestial Star at Cursor (thanh nhã, tinh tế, vừa vặn theo độ to nhỏ tùy chỉnh)
           const head = trail[0];
           const headAge = (timeNow - head.time) / maxAge;
-          if (headAge < 0.95) {
-            const headAlpha = Math.max(0, 1.0 - headAge);
+          if (headAge < 0.98) {
+            const headAlpha = Math.max(0.1, 1.0 - headAge);
+            const cScale = Math.max(0.2, settingsRef.current.cometSize ?? 1.0);
 
-            const headGlow = ctx.createRadialGradient(head.x, head.y, 0, head.x, head.y, head.size * 2.2);
+            // Soft compact starlight halo scaled
+            const glowR = 6.8 * cScale;
+            const headGlow = ctx.createRadialGradient(head.x, head.y, 0, head.x, head.y, glowR);
             headGlow.addColorStop(0, `rgba(255, 255, 255, ${headAlpha * 0.90})`);
-            headGlow.addColorStop(0.40, `rgba(255, 224, 130, ${headAlpha * 0.55})`);
+            headGlow.addColorStop(0.35, `rgba(255, 240, 180, ${headAlpha * 0.55})`);
+            headGlow.addColorStop(0.70, `rgba(128, 216, 255, ${headAlpha * 0.20})`);
             headGlow.addColorStop(1, 'rgba(128, 216, 255, 0)');
 
             ctx.beginPath();
-            ctx.arc(head.x, head.y, head.size * 2.2, 0, Math.PI * 2);
+            ctx.arc(head.x, head.y, glowR, 0, Math.PI * 2);
             ctx.fillStyle = headGlow;
             ctx.fill();
 
-            // Rotating delicate celestial glint
-            const flareAngle = timeNow * 0.0025;
-            const flareR = head.size * 1.6;
+            // Refined 4-point celestial star glint scaled
             ctx.save();
             ctx.translate(head.x, head.y);
-            ctx.rotate(flareAngle);
-            ctx.strokeStyle = `rgba(255, 255, 255, ${headAlpha * 0.70})`;
-            ctx.lineWidth = 0.9;
+            const r = 4.2 * cScale;
+            ctx.strokeStyle = `rgba(255, 255, 255, ${headAlpha * 0.85})`;
+            ctx.lineWidth = Math.max(0.5, 0.9 * Math.sqrt(cScale));
             ctx.beginPath();
-            ctx.moveTo(-flareR, 0);
-            ctx.lineTo(flareR, 0);
-            ctx.moveTo(0, -flareR);
-            ctx.lineTo(0, flareR);
+            ctx.moveTo(-r, 0);
+            ctx.lineTo(r, 0);
+            ctx.moveTo(0, -r);
+            ctx.lineTo(0, r);
             ctx.stroke();
+
+            // Delicate 4-point diamond star nucleus scaled
+            const coreR = 1.7 * cScale;
+            ctx.fillStyle = `rgba(255, 255, 255, ${headAlpha * 0.95})`;
+            ctx.beginPath();
+            ctx.moveTo(0, -coreR * 1.3);
+            ctx.lineTo(coreR * 0.7, 0);
+            ctx.lineTo(0, coreR * 1.3);
+            ctx.lineTo(-coreR * 0.7, 0);
+            ctx.closePath();
+            ctx.fill();
+
             ctx.restore();
           }
 
           ctx.restore();
         }
-      }
-
-      // --- 5. TRAILING STARDUST SPARKS FROM COMET ---
-      if (settings.cometTailEnabled && cometSparksRef.current.length > 0) {
-        ctx.save();
-        for (let i = cometSparksRef.current.length - 1; i >= 0; i--) {
-          const s = cometSparksRef.current[i];
-          s.x += s.vx * dt;
-          s.y += s.vy * dt;
-          s.alpha -= dt * 2.0;
-          s.size *= 0.95;
-          s.rotation += s.rotSpeed * dt;
-
-          if (s.alpha <= 0 || s.size <= 0.25) {
-            cometSparksRef.current.splice(i, 1);
-            continue;
-          }
-
-          ctx.save();
-          ctx.translate(s.x, s.y);
-          ctx.rotate(s.rotation);
-          ctx.fillStyle = s.color;
-          ctx.globalAlpha = Math.max(0, s.alpha);
-
-          const r = s.size;
-          ctx.beginPath();
-          ctx.moveTo(0, -r * 1.4);
-          ctx.lineTo(r * 0.6, 0);
-          ctx.lineTo(0, r * 1.4);
-          ctx.lineTo(-r * 0.6, 0);
-          ctx.closePath();
-          ctx.fill();
-
-          ctx.restore();
-        }
-        ctx.restore();
       }
 
       animId = requestAnimationFrame(renderCelestial);
@@ -1413,16 +1161,19 @@ export const WebGLPointCloud: React.FC<{
         : (0.5 - mouseRef.current.y * 0.5) * screenH;
 
       let bufferNeedsUpdate = false;
-      const t = timeNow * 0.001 * settings.speed;
-      const hitRadius = 30.0; // Interactive touch radius of the comet head
+      const currentSpeed = settingsRef.current.speed;
+      const currentParallax = settingsRef.current.parallaxStrength;
+      const t = timeNow * 0.001 * currentSpeed;
+      const cometScale = Math.max(0.3, settingsRef.current.cometSize ?? 1.0);
+      const hitRadius = 30.0 * cometScale; // Interactive touch radius of the comet head scaled
 
       for (let i = 0; i < count; i++) {
         const star = starEntities[i];
         const z = star.depth;
 
         // Calculate exact screen position of this star matching vertex shader
-        const parallaxX = -mouseRef.current.x * (0.007 * settings.parallaxStrength) * (1.0 / (z * 1.4 + 0.6));
-        const parallaxY = -mouseRef.current.y * (0.007 * settings.parallaxStrength) * (1.0 / (z * 1.4 + 0.6));
+        const parallaxX = -mouseRef.current.x * (0.007 * currentParallax) * (1.0 / (z * 1.4 + 0.6));
+        const parallaxY = -mouseRef.current.y * (0.007 * currentParallax) * (1.0 / (z * 1.4 + 0.6));
         const fallSpeed = (0.015 + star.fallRate * 0.026) * (1.0 / (z * 0.75 + 0.45));
         const yRaw = star.baseY - t * fallSpeed;
         const yNorm = ((yRaw + 1.25) % 2.5 + 2.5) % 2.5 - 1.25;
@@ -1507,13 +1258,13 @@ export const WebGLPointCloud: React.FC<{
       gl.enableVertexAttribArray(aParams);
       gl.vertexAttribPointer(aParams, 4, gl.FLOAT, false, 0, 0);
 
-      // Set Uniforms
+      // Set Uniforms dynamically from reactive settingsRef
       if (uRes) gl.uniform2f(uRes, canvas.width, canvas.height);
       if (uTime) gl.uniform1f(uTime, timeNow * 0.001);
       if (uMouse) gl.uniform2f(uMouse, mouseRef.current.x, mouseRef.current.y);
-      if (uSparkleSize) gl.uniform1f(uSparkleSize, settings.sparkleSize);
-      if (uSpeed) gl.uniform1f(uSpeed, settings.speed);
-      if (uParallaxStrength) gl.uniform1f(uParallaxStrength, settings.parallaxStrength);
+      if (uSparkleSize) gl.uniform1f(uSparkleSize, settingsRef.current.sparkleSize);
+      if (uSpeed) gl.uniform1f(uSpeed, settingsRef.current.speed);
+      if (uParallaxStrength) gl.uniform1f(uParallaxStrength, settingsRef.current.parallaxStrength);
 
       if (uShockwave) {
         gl.uniform3f(
@@ -1532,7 +1283,7 @@ export const WebGLPointCloud: React.FC<{
       const [c2r, c2g, c2b] = hexToRgb(secondaryColor);
       if (uColor1) gl.uniform3f(uColor1, c1r, c1g, c1b);
       if (uColor2) gl.uniform3f(uColor2, c2r, c2g, c2b);
-      if (uColorMode) gl.uniform1f(uColorMode, settings.colorMode);
+      if (uColorMode) gl.uniform1f(uColorMode, settingsRef.current.colorMode);
 
       gl.drawArrays(gl.POINTS, 0, count);
 
@@ -1553,10 +1304,6 @@ export const WebGLPointCloud: React.FC<{
   }, [
     settings.enabled, 
     settings.particleCount, 
-    settings.sparkleSize, 
-    settings.colorMode, 
-    settings.speed, 
-    settings.parallaxStrength,
     primaryColor, 
     secondaryColor, 
     isDarkMode

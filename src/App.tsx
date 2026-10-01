@@ -29,7 +29,6 @@ import LogsTab from "./components/LogsTab";
 import AiAssistant from "./components/AiAssistant";
 import { RandomLoader } from "./components/RandomLoader";
 import { WebGLBackground } from "./components/WebGLBackground";
-import PlayfulCursor from "./components/PlayfulCursor";
 import { ThemeToggle } from "./components/ThemeToggle";
 import SyncProgressBar from "./components/SyncProgressBar";
 import {
@@ -310,6 +309,11 @@ export default function App() {
 
   // Connection status (Online/Offline)
   const [isOnline, setIsOnline] = useState<boolean>(true);
+
+  // Custom brand logo (replaces default Clock icon in header)
+  const [customLogo, setCustomLogo] = useState<string>(
+    () => localStorage.getItem("app_custom_logo") || ""
+  );
 
   // Dynamic notification toasts list
   const [toasts, setToasts] = useState<
@@ -1395,26 +1399,27 @@ export default function App() {
       <div className="min-h-screen bg-slate-50/70 dark:bg-slate-950/75 text-slate-800 dark:text-slate-100 transition-colors duration-300 relative">
         <SyncProgressBar isLoading={isLoading} isSyncing={isSyncingGrid} />
         <WebGLBackground />
-        <PlayfulCursor />
-        <EmployeePortal
-          employees={employees}
-          timeLogs={timeLogs}
-          isLoading={isLoading}
-          isDarkMode={isDarkMode}
-          onToggleDarkMode={() => setIsDarkMode(!isDarkMode)}
-          onBackToLogin={() => {
-            // Remove role from URL query parameter and localStorage, then reload
-            localStorage.removeItem("user_role");
-            sessionStorage.removeItem("user_role_session");
-            sessionStorage.removeItem("accountant_key_session");
-            sessionStorage.removeItem("accountant_auth_expiry");
-            window.location.href = window.location.pathname;
-          }}
-          accountantKey={accountantKey}
-          departmentPassword={departmentPassword}
-          onRefresh={handleGuestRefresh}
-          isOnline={isOnline}
-        />
+        <div className="relative z-10">
+          <EmployeePortal
+            employees={employees}
+            timeLogs={timeLogs}
+            isLoading={isLoading}
+            isDarkMode={isDarkMode}
+            onToggleDarkMode={() => setIsDarkMode(!isDarkMode)}
+            onBackToLogin={() => {
+              // Remove role from URL query parameter and localStorage, then reload
+              localStorage.removeItem("user_role");
+              sessionStorage.removeItem("user_role_session");
+              sessionStorage.removeItem("accountant_key_session");
+              sessionStorage.removeItem("accountant_auth_expiry");
+              window.location.href = window.location.pathname;
+            }}
+            accountantKey={accountantKey}
+            departmentPassword={departmentPassword}
+            onRefresh={handleGuestRefresh}
+            isOnline={isOnline}
+          />
+        </div>
       </div>
     );
   }
@@ -2015,7 +2020,6 @@ export default function App() {
     <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-slate-50/70 dark:bg-slate-950/75 text-slate-800 dark:text-slate-100 flex flex-col font-sans transition-colors duration-300 relative">
       <SyncProgressBar isLoading={isLoading} isSyncing={isSyncingGrid} />
       <WebGLBackground />
-      <PlayfulCursor />
 
       {/* Interactive Parallax Ambient Glowing Blobs */}
       <div className="pointer-events-none fixed inset-0 no-swipe overflow-hidden z-0">
@@ -2054,9 +2058,17 @@ export default function App() {
             {/* Logo and Greeting */}
             <div className="flex items-center justify-between w-full sm:w-auto gap-3 shrink-0">
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 sm:w-9 sm:h-9 bg-indigo-600 dark:bg-indigo-500 rounded-xl flex items-center justify-center text-white font-bold shadow-sm shrink-0">
-                  <Clock className="w-4 h-4 sm:w-5 sm:h-5" />
-                </div>
+                {customLogo ? (
+                  <img
+                    src={customLogo}
+                    alt="Logo Hệ Thống"
+                    className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl object-contain shadow-sm shrink-0 bg-white dark:bg-slate-800 p-0.5 border border-slate-200/60 dark:border-slate-700"
+                  />
+                ) : (
+                  <div className="w-8 h-8 sm:w-9 sm:h-9 bg-indigo-600 dark:bg-indigo-500 rounded-xl flex items-center justify-center text-white font-bold shadow-sm shrink-0">
+                    <Clock className="w-4 h-4 sm:w-5 sm:h-5" />
+                  </div>
+                )}
                 <div className="shrink-0 flex flex-col justify-center">
                   <div className="flex items-center gap-2">
                     <h1 className="font-sans font-bold text-sm sm:text-base text-slate-800 dark:text-slate-100 whitespace-nowrap">
@@ -2412,6 +2424,47 @@ export default function App() {
                             <Database className="w-4 h-4 text-indigo-500 shrink-0" />
                             <span>Quản Lý Sao Lưu (JSON)</span>
                           </button>
+
+                          <div className="border-t border-slate-100 dark:border-slate-850/80 my-1" />
+
+                          <label className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-left text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-cyan-600 dark:hover:text-cyan-400 transition-all duration-200 cursor-pointer">
+                            <Upload className="w-4 h-4 text-cyan-500 shrink-0" />
+                            <span>{customLogo ? "Thay Đổi Logo Hệ Thống" : "Tải Lên Logo Hệ Thống"}</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  const reader = new FileReader();
+                                  reader.onload = (ev) => {
+                                    const base64 = ev.target?.result as string;
+                                    setCustomLogo(base64);
+                                    localStorage.setItem("app_custom_logo", base64);
+                                    showToast("Đã tải lên logo tùy chỉnh thành công!", "success");
+                                  };
+                                  reader.readAsDataURL(file);
+                                }
+                                setIsAdminDropdownOpen(false);
+                              }}
+                            />
+                          </label>
+
+                          {customLogo && (
+                            <button
+                              onClick={() => {
+                                setCustomLogo("");
+                                localStorage.removeItem("app_custom_logo");
+                                showToast("Đã khôi phục biểu tượng đồng hồ mặc định!", "info");
+                                setIsAdminDropdownOpen(false);
+                              }}
+                              className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold text-left text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-all duration-200 cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 shrink-0" />
+                              <span>Khôi phục Logo Đồng Hồ Gốc</span>
+                            </button>
+                          )}
                         </motion.div>
                       </>
                     )}
@@ -2458,7 +2511,7 @@ export default function App() {
 
       {/* Main Content Area */}
       <main
-        className="flex-1 max-w-7xl w-full mx-auto min-w-0 px-2 sm:px-6 lg:px-8 py-6 sm:py-8"
+        className="relative z-10 flex-1 max-w-7xl w-full mx-auto min-w-0 px-2 sm:px-6 lg:px-8 py-6 sm:py-8"
         {...swipeHandlers}
       >
         {/* Swipe Indicator Handle */}
