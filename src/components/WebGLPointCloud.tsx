@@ -413,6 +413,25 @@ export const WebGLPointCloud: React.FC<{
   const shootingStarsRef = useRef<ShootingStar[]>([]);
   const subtleGlintsRef = useRef<SubtleImpactGlint[]>([]);
 
+  // Mountain ridge stroke flashes and lake water ripples
+  const mountainStrokeGlowsRef = useRef<{
+    id: number;
+    impactX: number;
+    color: string;
+    maxRadius: number;
+    startTime: number;
+    duration: number;
+  }[]>([]);
+  const lakeRipplesRef = useRef<{
+    id: number;
+    x: number;
+    y: number;
+    color: string;
+    radius: number;
+    maxRadius: number;
+    alpha: number;
+  }[]>([]);
+
   // Star entities list for interactive star collision and dissolution
   const starsRef = useRef<StarEntity[]>([]);
   const dissolvedDustRef = useRef<DissolvedDust[]>([]);
@@ -466,24 +485,52 @@ export const WebGLPointCloud: React.FC<{
     });
   };
 
-  // Trigger gentle micro-spark when shooting star completes its path ("nhẹ nhàng nhỏ nhẹ thôi, tuyệt đối không có vòng tròn to")
-  const triggerSubtleImpact = (x: number, y: number, starColor: string) => {
+  // Trigger gentle micro-spark and dispatch impact event for WebGL water ripples & mountain ridge stroke
+  const triggerSubtleImpact = (x: number, y: number, starColor: string, isMountain: boolean = false) => {
+    // Dispatch event to WebGLBackground for full-screen shader shockwave ripple
+    window.dispatchEvent(
+      new CustomEvent('meteor-mountain-impact', {
+        detail: { clientX: x, clientY: y, color: starColor }
+      })
+    );
+
+    if (isMountain) {
+      mountainStrokeGlowsRef.current.push({
+        id: Date.now() + Math.random(),
+        impactX: x,
+        color: starColor,
+        maxRadius: 180,
+        startTime: performance.now(),
+        duration: 850
+      });
+    } else {
+      lakeRipplesRef.current.push({
+        id: Date.now() + Math.random(),
+        x,
+        y,
+        color: starColor,
+        radius: 4,
+        maxRadius: 75,
+        alpha: 0.95
+      });
+    }
+
     const sparks: SubtleImpactGlint['sparks'] = [];
-    const count = 4 + Math.floor(Math.random() * 3); // 4 to 6 tiny micro-sparkles
+    const count = 5 + Math.floor(Math.random() * 4); // 5 to 8 tiny micro-sparkles
     const sparkColors = ['#ffffff', '#fff9c4', starColor];
 
     for (let i = 0; i < count; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const speed = 10 + Math.random() * 20;
+      const speed = 12 + Math.random() * 24;
       sparks.push({
         x: x + (Math.random() * 4 - 2),
         y: y + (Math.random() * 2 - 1),
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed - 5.0,
         alpha: 0.85,
-        size: 0.8 + Math.random() * 0.5, // Tiny: 0.8px - 1.3px
+        size: 0.8 + Math.random() * 0.6,
         color: sparkColors[Math.floor(Math.random() * sparkColors.length)],
-        decay: 2.8 + Math.random() * 1.0 // Quick gentle fade in ~0.3s
+        decay: 2.5 + Math.random() * 1.0
       });
     }
 
@@ -491,7 +538,7 @@ export const WebGLPointCloud: React.FC<{
       id: Date.now() + Math.random(),
       x,
       y,
-      alpha: 0.75,
+      alpha: 0.85,
       sparks
     });
   };
@@ -714,7 +761,7 @@ export const WebGLPointCloud: React.FC<{
                 m.impacted = true;
                 m.y = ridgeY;
                 const mountainCol = getTopmostMountainColor(m.x, width, height, timeNow * 0.001, primaryColor, secondaryColor, 0.9);
-                triggerSubtleImpact(m.x, ridgeY, mountainCol);
+                triggerSubtleImpact(m.x, ridgeY, mountainCol, true);
               }
             } else {
               // Reaches the river / water level
@@ -722,7 +769,7 @@ export const WebGLPointCloud: React.FC<{
               if (m.y >= seaImpactY) {
                 m.impacted = true;
                 m.y = seaImpactY;
-                triggerSubtleImpact(m.x, seaImpactY, m.color);
+                triggerSubtleImpact(m.x, seaImpactY, m.color, false);
               }
             }
           }
@@ -816,6 +863,98 @@ export const WebGLPointCloud: React.FC<{
           ctx.fillStyle = sp.color;
           ctx.globalAlpha = Math.max(0, sp.alpha * g.alpha);
           ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      // --- 2.5 RENDER MOUNTAIN RIDGE STROKE FLASHES (Lóe sáng viền núi khi sao băng chạm đỉnh núi) ---
+      const strokeGlows = mountainStrokeGlowsRef.current;
+      if (strokeGlows.length > 0) {
+        ctx.save();
+        for (let i = strokeGlows.length - 1; i >= 0; i--) {
+          const glow = strokeGlows[i];
+          const progress = (timeNow - glow.startTime) / glow.duration;
+          if (progress >= 1.0) {
+            strokeGlows.splice(i, 1);
+            continue;
+          }
+
+          const alpha = Math.pow(1.0 - progress, 1.3);
+          const spread = glow.maxRadius * (0.35 + 0.65 * Math.sqrt(progress));
+          const step = 4;
+          const startX = Math.max(0, glow.impactX - spread);
+          const endX = Math.min(width, glow.impactX + spread);
+
+          // Outer glowing ridge halo
+          ctx.beginPath();
+          let first = true;
+          for (let rx = startX; rx <= endX; rx += step) {
+            const ry = getMountainRidgeScreenY(rx, width, height, timeNow * 0.001, 0.9);
+            if (first) {
+              ctx.moveTo(rx, ry);
+              first = false;
+            } else {
+              ctx.lineTo(rx, ry);
+            }
+          }
+          ctx.strokeStyle = glow.color;
+          ctx.lineWidth = 5.0 * (1.0 - progress * 0.5);
+          ctx.globalAlpha = alpha * 0.75;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.stroke();
+
+          // Intense core hot stroke along ridge crest
+          ctx.beginPath();
+          first = true;
+          for (let rx = startX; rx <= endX; rx += step) {
+            const ry = getMountainRidgeScreenY(rx, width, height, timeNow * 0.001, 0.9);
+            if (first) {
+              ctx.moveTo(rx, ry);
+              first = false;
+            } else {
+              ctx.lineTo(rx, ry);
+            }
+          }
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1.8 * (1.0 - progress * 0.5);
+          ctx.globalAlpha = alpha * 0.90;
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      // --- 2.6 RENDER LAKE WATER RIPPLES (Sóng nước lan tỏa trên hồ khi sao băng chạm mặt nước) ---
+      const ripples = lakeRipplesRef.current;
+      if (ripples.length > 0) {
+        ctx.save();
+        for (let i = ripples.length - 1; i >= 0; i--) {
+          const rip = ripples[i];
+          rip.radius += dt * 48.0;
+          rip.alpha = Math.max(0, 1.0 - rip.radius / rip.maxRadius);
+
+          if (rip.alpha <= 0.02 || rip.radius >= rip.maxRadius) {
+            ripples.splice(i, 1);
+            continue;
+          }
+
+          // Outer elliptical water ring
+          ctx.beginPath();
+          ctx.ellipse(rip.x, rip.y, rip.radius, rip.radius * 0.30, 0, 0, Math.PI * 2);
+          ctx.strokeStyle = rip.color;
+          ctx.lineWidth = 1.6;
+          ctx.globalAlpha = rip.alpha * 0.80;
+          ctx.stroke();
+
+          // Secondary inner delicate ripple
+          if (rip.radius > 12) {
+            ctx.beginPath();
+            ctx.ellipse(rip.x, rip.y, rip.radius * 0.60, rip.radius * 0.60 * 0.30, 0, 0, Math.PI * 2);
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1.0;
+            ctx.globalAlpha = rip.alpha * 0.55;
+            ctx.stroke();
+          }
         }
         ctx.restore();
       }

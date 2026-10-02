@@ -4,6 +4,8 @@ import React, {
   useCallback,
   useMemo,
   useRef,
+  Suspense,
+  lazy,
 } from "react";
 import { User as FirebaseUser } from "firebase/auth";
 import { motion, AnimatePresence } from "motion/react";
@@ -21,14 +23,15 @@ import {
 } from "./sheets";
 import { Employee, TimeLog } from "./types";
 import AttendanceTab from "./components/AttendanceTab";
-import EmployeesTab from "./components/EmployeesTab";
-import ReportsTab from "./components/ReportsTab";
-import EmployeePortal from "./components/EmployeePortal";
-import UserGuide from "./components/UserGuide";
-import LogsTab from "./components/LogsTab";
-import AiAssistant from "./components/AiAssistant";
+const EmployeesTab = lazy(() => import("./components/EmployeesTab"));
+const ReportsTab = lazy(() => import("./components/ReportsTab"));
+const EmployeePortal = lazy(() => import("./components/EmployeePortal"));
+const UserGuide = lazy(() => import("./components/UserGuide"));
+const LogsTab = lazy(() => import("./components/LogsTab"));
+const AiAssistant = lazy(() => import("./components/AiAssistant"));
 import { RandomLoader } from "./components/RandomLoader";
 import { WebGLBackground } from "./components/WebGLBackground";
+import { ZenBackgroundToggle } from "./components/ZenBackgroundToggle";
 import { ThemeToggle } from "./components/ThemeToggle";
 import SyncProgressBar from "./components/SyncProgressBar";
 import {
@@ -152,6 +155,13 @@ const SmallHeaderClock = () => {
   );
 };
 
+const TabLoadingFallback = () => (
+  <div className="py-24 flex flex-col items-center justify-center space-y-4">
+    <div className="w-10 h-10 border-4 border-indigo-500/20 border-t-indigo-600 rounded-full animate-spin" />
+    <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Đang tải mô-đun...</span>
+  </div>
+);
+
 export default function App() {
   const hasLoadedInitialDataRef = useRef<boolean>(false);
   const [user, setUser] = useState<FirebaseUser | null>(null);
@@ -190,6 +200,31 @@ export default function App() {
     return false;
   });
 
+  // Cosmic Zen / Background-only Mode state
+  const [isZenBackgroundMode, setIsZenBackgroundMode] = useState<boolean>(() => {
+    return localStorage.getItem("zen_background_mode") === "true";
+  });
+
+  useEffect(() => {
+    localStorage.setItem("zen_background_mode", String(isZenBackgroundMode));
+    if (isZenBackgroundMode) {
+      document.body.classList.add("zen-starfield-mode-active");
+    } else {
+      document.body.classList.remove("zen-starfield-mode-active");
+    }
+  }, [isZenBackgroundMode]);
+
+  // ESC shortcut to exit Zen Background Mode
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isZenBackgroundMode) {
+        setIsZenBackgroundMode(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isZenBackgroundMode]);
+
   // Audio / Sound effects state
   const [soundEnabled, setSoundEnabledState] = useState<boolean>(() =>
     isSoundEnabled(),
@@ -226,8 +261,22 @@ export default function App() {
       setSwipeThreshold(40);
     }
   }, []);
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [timeLogs, setTimeLogs] = useState<TimeLog[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>(() => {
+    try {
+      const cached = localStorage.getItem("cached_employees");
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [timeLogs, setTimeLogs] = useState<TimeLog[]>(() => {
+    try {
+      const cached = localStorage.getItem("cached_timelogs");
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isInitializingSheets, setIsInitializingSheets] =
     useState<boolean>(false);
@@ -1397,28 +1446,34 @@ export default function App() {
   if (role === "employee") {
     return (
       <div className="min-h-screen bg-slate-50/70 dark:bg-slate-950/75 text-slate-800 dark:text-slate-100 transition-colors duration-300 relative">
+        <ZenBackgroundToggle
+          isZenMode={isZenBackgroundMode}
+          onToggleZenMode={setIsZenBackgroundMode}
+        />
         <SyncProgressBar isLoading={isLoading} isSyncing={isSyncingGrid} />
-        <WebGLBackground />
-        <div className="relative z-10">
-          <EmployeePortal
-            employees={employees}
-            timeLogs={timeLogs}
-            isLoading={isLoading}
-            isDarkMode={isDarkMode}
-            onToggleDarkMode={() => setIsDarkMode(!isDarkMode)}
-            onBackToLogin={() => {
-              // Remove role from URL query parameter and localStorage, then reload
-              localStorage.removeItem("user_role");
-              sessionStorage.removeItem("user_role_session");
-              sessionStorage.removeItem("accountant_key_session");
-              sessionStorage.removeItem("accountant_auth_expiry");
-              window.location.href = window.location.pathname;
-            }}
-            accountantKey={accountantKey}
-            departmentPassword={departmentPassword}
-            onRefresh={handleGuestRefresh}
-            isOnline={isOnline}
-          />
+        <WebGLBackground isZenMode={isZenBackgroundMode} />
+        <div className={isZenBackgroundMode ? "hidden" : "relative z-10"}>
+          <Suspense fallback={<TabLoadingFallback />}>
+            <EmployeePortal
+              employees={employees}
+              timeLogs={timeLogs}
+              isLoading={isLoading}
+              isDarkMode={isDarkMode}
+              onToggleDarkMode={() => setIsDarkMode(!isDarkMode)}
+              onBackToLogin={() => {
+                // Remove role from URL query parameter and localStorage, then reload
+                localStorage.removeItem("user_role");
+                sessionStorage.removeItem("user_role_session");
+                sessionStorage.removeItem("accountant_key_session");
+                sessionStorage.removeItem("accountant_auth_expiry");
+                window.location.href = window.location.pathname;
+              }}
+              accountantKey={accountantKey}
+              departmentPassword={departmentPassword}
+              onRefresh={handleGuestRefresh}
+              isOnline={isOnline}
+            />
+          </Suspense>
         </div>
       </div>
     );
@@ -1428,8 +1483,13 @@ export default function App() {
   if (needsAuth) {
     return (
       <div className="min-h-screen bg-slate-50/70 dark:bg-slate-950/75 text-slate-800 dark:text-slate-100 transition-colors duration-300 flex flex-col items-center justify-start px-4 sm:px-6 lg:px-8 py-12 sm:py-16 font-sans relative overflow-y-auto">
-        <WebGLBackground />
+        <ZenBackgroundToggle
+          isZenMode={isZenBackgroundMode}
+          onToggleZenMode={setIsZenBackgroundMode}
+        />
+        <WebGLBackground isZenMode={isZenBackgroundMode} />
 
+        <div className={isZenBackgroundMode ? "hidden" : "contents"}>
         {/* Decorative dynamic Material Design 3 ambient blobs */}
         <div className="absolute top-[-10%] left-[-10%] w-[350px] h-[350px] rounded-full bg-indigo-400/10 blur-[90px] pointer-events-none" />
         <div className="absolute bottom-[-10%] right-[-10%] w-[400px] h-[400px] rounded-full bg-sky-400/10 blur-[110px] pointer-events-none" />
@@ -1491,7 +1551,7 @@ export default function App() {
               Sheets phòng ban. Vui lòng chọn cổng truy cập:
             </p>
 
-            {isLoggingIn || isLoading ? (
+            {isLoggingIn ? (
               <div className="space-y-4 w-full animate-pulse">
                 <div className="h-12 bg-slate-200 dark:bg-slate-800 rounded-2xl w-full"></div>
                 <div className="flex items-center justify-center py-1">
@@ -1856,6 +1916,7 @@ export default function App() {
             </div>
           </div>
         </div>
+        </div>
       </div>
     );
   }
@@ -1864,7 +1925,12 @@ export default function App() {
   if (user && !isUserAuthorized) {
     return (
       <div className="min-h-screen bg-slate-50/70 dark:bg-slate-950/75 text-slate-800 dark:text-slate-100 transition-colors duration-300 flex flex-col justify-center items-center px-4 py-12 font-sans relative overflow-hidden">
-        <WebGLBackground />
+        <ZenBackgroundToggle
+          isZenMode={isZenBackgroundMode}
+          onToggleZenMode={setIsZenBackgroundMode}
+        />
+        <WebGLBackground isZenMode={isZenBackgroundMode} />
+        <div className={isZenBackgroundMode ? "hidden" : "contents"}>
         <div className="absolute top-[-20%] left-[-10%] w-[300px] h-[300px] rounded-full bg-rose-400/10 blur-[80px]" />
 
         <motion.div
@@ -1902,6 +1968,7 @@ export default function App() {
             Đăng xuất & Đăng nhập lại
           </button>
         </motion.div>
+        </div>
       </div>
     );
   }
@@ -1910,7 +1977,12 @@ export default function App() {
   if (user && isPinRequired) {
     return (
       <div className="min-h-screen bg-slate-50/70 dark:bg-slate-950/75 text-slate-800 dark:text-slate-100 transition-colors duration-300 flex flex-col justify-center items-center px-4 py-12 font-sans relative overflow-hidden">
-        <WebGLBackground />
+        <ZenBackgroundToggle
+          isZenMode={isZenBackgroundMode}
+          onToggleZenMode={setIsZenBackgroundMode}
+        />
+        <WebGLBackground isZenMode={isZenBackgroundMode} />
+        <div className={isZenBackgroundMode ? "hidden" : "contents"}>
         <div className="absolute top-[-20%] left-[-10%] w-[300px] h-[300px] rounded-full bg-indigo-400/10 blur-[80px]" />
 
         <motion.div
@@ -1977,6 +2049,7 @@ export default function App() {
             Đăng xuất tài khoản Google
           </button>
         </motion.div>
+        </div>
       </div>
     );
   }
@@ -2018,9 +2091,14 @@ export default function App() {
 
   return (
     <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-slate-50/70 dark:bg-slate-950/75 text-slate-800 dark:text-slate-100 flex flex-col font-sans transition-colors duration-300 relative">
+      <ZenBackgroundToggle
+        isZenMode={isZenBackgroundMode}
+        onToggleZenMode={setIsZenBackgroundMode}
+      />
       <SyncProgressBar isLoading={isLoading} isSyncing={isSyncingGrid} />
-      <WebGLBackground />
+      <WebGLBackground isZenMode={isZenBackgroundMode} />
 
+      <div className={isZenBackgroundMode ? "hidden" : "contents"}>
       {/* Interactive Parallax Ambient Glowing Blobs */}
       <div className="pointer-events-none fixed inset-0 no-swipe overflow-hidden z-0">
         <div
@@ -2053,7 +2131,7 @@ export default function App() {
 
       {/* Main Header / Navigation */}
       <header className="bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800/80 shadow-sm sticky top-0 z-40 transition-colors duration-300">
-        <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8 pl-32 sm:pl-36 md:pl-40">
           <div className="min-h-[64px] py-2 sm:py-0 sm:h-16 flex flex-col sm:flex-row justify-between items-center gap-3 sm:gap-0">
             {/* Logo and Greeting */}
             <div className="flex items-center justify-between w-full sm:w-auto gap-3 shrink-0">
@@ -2557,44 +2635,46 @@ export default function App() {
               />
             )}
 
-            {token && activeTab === "employees" && (
-              <EmployeesTab
-                accessToken={token}
-                onShowToast={showToast}
-                employees={employees}
-                timeLogs={timeLogs}
-                onEmployeeAdded={triggerRefresh}
-                isLoading={isLoading}
-              />
-            )}
+            <Suspense fallback={<TabLoadingFallback />}>
+              {token && activeTab === "employees" && (
+                <EmployeesTab
+                  accessToken={token}
+                  onShowToast={showToast}
+                  employees={employees}
+                  timeLogs={timeLogs}
+                  onEmployeeAdded={triggerRefresh}
+                  isLoading={isLoading}
+                />
+              )}
 
-            {(token || role === "accountant") && activeTab === "reports" && (
-              <ReportsTab
-                accessToken={token || ""}
-                onShowToast={showToast}
-                employees={employees}
-                timeLogs={timeLogs}
-                onLogUpdated={triggerRefresh}
-                role={role}
-                isLoading={isLoading}
-              />
-            )}
+              {(token || role === "accountant") && activeTab === "reports" && (
+                <ReportsTab
+                  accessToken={token || ""}
+                  onShowToast={showToast}
+                  employees={employees}
+                  timeLogs={timeLogs}
+                  onLogUpdated={triggerRefresh}
+                  role={role}
+                  isLoading={isLoading}
+                />
+              )}
 
-            {activeTab === "guide" && (
-              <UserGuide
-                accountantKey={accountantKey}
-                departmentPassword={departmentPassword}
-                showSensitiveInfo={role === "admin"}
-              />
-            )}
+              {activeTab === "guide" && (
+                <UserGuide
+                  accountantKey={accountantKey}
+                  departmentPassword={departmentPassword}
+                  showSensitiveInfo={role === "admin"}
+                />
+              )}
 
-            {role === "admin" && activeTab === "logs" && (
-              <LogsTab
-                logs={auditLogs}
-                onRefresh={loadAuditLogs}
-                isLoading={isLoading}
-              />
-            )}
+              {role === "admin" && activeTab === "logs" && (
+                <LogsTab
+                  logs={auditLogs}
+                  onRefresh={loadAuditLogs}
+                  isLoading={isLoading}
+                />
+              )}
+            </Suspense>
           </motion.div>
         </AnimatePresence>
       </main>
@@ -3054,12 +3134,15 @@ export default function App() {
       </div>
 
       {/* Floating Gemini AI Assistant (Powered by Gemini 3.5) */}
-      <AiAssistant
-        employees={employees}
-        timeLogs={timeLogs}
-        selectedMonth={new Date().getMonth() + 1}
-        selectedYear={new Date().getFullYear()}
-      />
+      <Suspense fallback={null}>
+        <AiAssistant
+          employees={employees}
+          timeLogs={timeLogs}
+          selectedMonth={new Date().getMonth() + 1}
+          selectedYear={new Date().getFullYear()}
+        />
+      </Suspense>
+      </div>
     </div>
   );
 }

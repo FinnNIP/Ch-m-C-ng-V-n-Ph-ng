@@ -818,7 +818,11 @@ const ColorField: React.FC<ColorFieldProps> = ({
   );
 };
 
-export const WebGLBackground: React.FC = () => {
+interface WebGLBackgroundProps {
+  isZenMode?: boolean;
+}
+
+export const WebGLBackground: React.FC<WebGLBackgroundProps> = ({ isZenMode = false }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // Mouse position tracking for beautiful interaction
@@ -873,6 +877,42 @@ export const WebGLBackground: React.FC = () => {
     };
     window.addEventListener('meteor-mountain-impact', handleImpact);
     return () => window.removeEventListener('meteor-mountain-impact', handleImpact);
+  }, [primaryColor]);
+
+  // Concentric celestial neon ripple shockwave on mouse click
+  useEffect(() => {
+    const handleUserClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.closest('button') ||
+          target.closest('input') ||
+          target.closest('select') ||
+          target.closest('a') ||
+          target.closest('[role="dialog"]') ||
+          target.closest('.no-click-ripple'))
+      ) {
+        return;
+      }
+
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      const aspect = width / height;
+      const stX = ((e.clientX / width) * 2.0 - 1.0) * aspect * 5.0;
+      const stY = ((1.0 - e.clientY / height) * 2.0 - 1.0) * 5.0;
+      const rgb = hexToRgb(primaryColor);
+
+      shockwaveRef.current = {
+        x: stX,
+        y: stY,
+        radius: 0.05,
+        intensity: 1.25,
+        color: rgb
+      };
+    };
+
+    window.addEventListener('click', handleUserClick);
+    return () => window.removeEventListener('click', handleUserClick);
   }, [primaryColor]);
   const [opacity, setOpacity] = useState<number>(() => Number(localStorage.getItem('bg_opacity') || '1.00'));
   const [intensity, setIntensity] = useState<number>(() => {
@@ -1001,7 +1041,7 @@ export const WebGLBackground: React.FC = () => {
     }
   }, [glassmorphic]);
 
-  // Sync color changes with the Neon Glass Context Menu
+  // Sync color changes with the Neon Glass Context Menu & Zen Background Studio
   useEffect(() => {
     const handleColorUpdate = (e: Event) => {
       const customEvent = e as CustomEvent;
@@ -1009,6 +1049,14 @@ export const WebGLBackground: React.FC = () => {
         if (customEvent.detail.primary) setPrimaryColor(customEvent.detail.primary);
         if (customEvent.detail.secondary) setSecondaryColor(customEvent.detail.secondary);
         if (customEvent.detail.preset) setPreset(customEvent.detail.preset);
+        if (customEvent.detail.river) setRiverColor(customEvent.detail.river);
+        if (customEvent.detail.auroraCol1) setAuroraCol1(customEvent.detail.auroraCol1);
+        if (customEvent.detail.auroraCol2) setAuroraCol2(customEvent.detail.auroraCol2);
+        if (customEvent.detail.auroraCol3) setAuroraCol3(customEvent.detail.auroraCol3);
+        if (customEvent.detail.auroraPreset) setAuroraPreset(customEvent.detail.auroraPreset);
+        if (customEvent.detail.intensity !== undefined) setIntensity(customEvent.detail.intensity);
+        if (customEvent.detail.auroraIntensity !== undefined) setAuroraIntensity(customEvent.detail.auroraIntensity);
+        if (customEvent.detail.speed !== undefined) setSpeed(customEvent.detail.speed);
       }
     };
     window.addEventListener('update-bg-colors', handleColorUpdate);
@@ -1410,8 +1458,9 @@ export const WebGLBackground: React.FC = () => {
         isDarkMode={isDarkMode}
       />
 
-      {/* Floating Configuration Widget - Shifted to bottom-left to avoid chatbot and toast collisions */}
-      <div className="fixed bottom-6 left-6 z-[60] flex flex-col items-start gap-3 font-sans no-print">
+      {/* Floating Configuration Widget - Shifted to bottom-left to avoid chatbot and toast collisions (Hidden when Zen Mode is active) */}
+      {!isZenMode && (
+        <div className="fixed bottom-6 left-6 z-[60] flex flex-col items-start gap-3 font-sans no-print">
         
         {/* Expanded Panel */}
         <AnimatePresence>
@@ -2100,6 +2149,7 @@ export const WebGLBackground: React.FC = () => {
         </motion.button>
 
       </div>
+      )}
     </>
   );
 };

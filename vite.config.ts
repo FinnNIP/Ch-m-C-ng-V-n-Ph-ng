@@ -12,6 +12,32 @@ export default defineConfig(() => {
         'lucide-react': path.resolve(__dirname, 'src/components/icons'),
       },
     },
+    optimizeDeps: {
+      include: [
+        'react',
+        'react-dom',
+        'motion/react',
+        'iconsax-react',
+        'firebase/app',
+        'firebase/auth',
+      ],
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('node_modules')) {
+              if (id.includes('recharts')) return 'vendor-recharts';
+              if (id.includes('motion')) return 'vendor-motion';
+              if (id.includes('firebase')) return 'vendor-firebase';
+              if (id.includes('iconsax-react')) return 'vendor-iconsax';
+              if (id.includes('react') || id.includes('react-dom')) return 'vendor-core';
+            }
+          },
+        },
+      },
+      chunkSizeWarningLimit: 1200,
+    },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modifyâfile watching is disabled to prevent flickering during agent edits.

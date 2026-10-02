@@ -1,6 +1,83 @@
 import React, { forwardRef, useState } from 'react';
 import { motion, HTMLMotionProps } from 'motion/react';
-import * as Iconsax from 'iconsax-react';
+import {
+  Activity as IconsaxActivity,
+  Danger as IconsaxDanger,
+  Warning2 as IconsaxWarning2,
+  ArrowLeft2 as IconsaxArrowLeft2,
+  ArrowRight2 as IconsaxArrowRight2,
+  Book1 as IconsaxBook1,
+  SmartCar as IconsaxSmartCar,
+  Briefcase as IconsaxBriefcase,
+  Calculator as IconsaxCalculator,
+  Calendar as IconsaxCalendar,
+  TickCircle as IconsaxTickCircle,
+  TickSquare as IconsaxTickSquare,
+  ArrowDown2 as IconsaxArrowDown2,
+  ArrowUp2 as IconsaxArrowUp2,
+  Clock as IconsaxClock,
+  Coffee as IconsaxCoffee,
+  Coin as IconsaxCoin,
+  Discover as IconsaxDiscover,
+  Copy as IconsaxCopy,
+  Data as IconsaxData,
+  ImportCurve as IconsaxImportCurve,
+  Edit2 as IconsaxEdit2,
+  ExportSquare as IconsaxExportSquare,
+  Eye as IconsaxEye,
+  EyeSlash as IconsaxEyeSlash,
+  DocumentCode as IconsaxDocumentCode,
+  DocumentText as IconsaxDocumentText,
+  Filter as IconsaxFilter,
+  Gift as IconsaxGift,
+  Global as IconsaxGlobal,
+  InfoCircle as IconsaxInfoCircle,
+  Key as IconsaxKey,
+  Layer as IconsaxLayer,
+  Element4 as IconsaxElement4,
+  Task as IconsaxTask,
+  Lock1 as IconsaxLock1,
+  LogoutCurve as IconsaxLogoutCurve,
+  Maximize2 as IconsaxMaximize2,
+  Maximize3 as IconsaxMaximize3,
+  Messages1 as IconsaxMessages1,
+  Moon as IconsaxMoon,
+  Mouse as IconsaxMouse,
+  Hierarchy as IconsaxHierarchy,
+  Colorfilter as IconsaxColorfilter,
+  MagicStar as IconsaxMagicStar,
+  Star as IconsaxStar,
+  Flash as IconsaxFlash,
+  Pause as IconsaxPause,
+  Play as IconsaxPlay,
+  Add as IconsaxAdd,
+  Printer as IconsaxPrinter,
+  Radio as IconsaxRadio,
+  Refresh2 as IconsaxRefresh2,
+  RotateLeft as IconsaxRotateLeft,
+  Save2 as IconsaxSave2,
+  SearchNormal1 as IconsaxSearchNormal1,
+  Send2 as IconsaxSend2,
+  Setting2 as IconsaxSetting2,
+  Share as IconsaxShare,
+  ShieldCross as IconsaxShieldCross,
+  ShieldTick as IconsaxShieldTick,
+  Shuffle as IconsaxShuffle,
+  Slider as IconsaxSlider,
+  Happyemoji as IconsaxHappyemoji,
+  Sun1 as IconsaxSun1,
+  Trash as IconsaxTrash,
+  TrendUp as IconsaxTrendUp,
+  ExportCurve as IconsaxExportCurve,
+  Profile as IconsaxProfile,
+  UserTick as IconsaxUserTick,
+  UserAdd as IconsaxUserAdd,
+  Profile2User as IconsaxProfile2User,
+  VolumeHigh as IconsaxVolumeHigh,
+  VolumeCross as IconsaxVolumeCross,
+  AudioSquare as IconsaxAudioSquare,
+  CloseCircle as IconsaxCloseCircle,
+} from 'iconsax-react';
 
 export type IconVariant = 'Linear' | 'Outline' | 'Broken' | 'Bold' | 'Bulk' | 'TwoTone';
 
@@ -338,87 +415,87 @@ export function createAnimatedIcon(
 }
 
 // 81 Mappings from Lucide to Iconsax Animated equivalents
-export const Activity = createAnimatedIcon(Iconsax.Activity, 'surge');
-export const AlertCircle = createAnimatedIcon(Iconsax.Danger, 'bell');
-export const AlertTriangle = createAnimatedIcon(Iconsax.Warning2, 'bell');
-export const ArrowLeft = createAnimatedIcon(Iconsax.ArrowLeft2, 'left');
-export const ArrowRight = createAnimatedIcon(Iconsax.ArrowRight2, 'right');
-export const BookOpen = createAnimatedIcon(Iconsax.Book1, 'page');
-export const Bot = createAnimatedIcon(Iconsax.SmartCar, 'avatar');
-export const Briefcase = createAnimatedIcon(Iconsax.Briefcase, 'default');
-export const Calculator = createAnimatedIcon(Iconsax.Calculator, 'pop');
-export const Calendar = createAnimatedIcon(Iconsax.Calendar, 'page');
-export const Check = createAnimatedIcon(Iconsax.TickCircle, 'pop');
-export const CheckCircle = createAnimatedIcon(Iconsax.TickCircle, 'pop');
-export const CheckCircle2 = createAnimatedIcon(Iconsax.TickCircle, 'pop');
-export const CheckSquare = createAnimatedIcon(Iconsax.TickSquare, 'pop');
-export const ChevronDown = createAnimatedIcon(Iconsax.ArrowDown2, 'down');
-export const ChevronLeft = createAnimatedIcon(Iconsax.ArrowLeft2, 'left');
-export const ChevronRight = createAnimatedIcon(Iconsax.ArrowRight2, 'right');
-export const ChevronUp = createAnimatedIcon(Iconsax.ArrowUp2, 'up');
-export const Clock = createAnimatedIcon(Iconsax.Clock, 'spin');
-export const Coffee = createAnimatedIcon(Iconsax.Coffee, 'default');
-export const Coins = createAnimatedIcon(Iconsax.Coin, 'pop');
-export const Compass = createAnimatedIcon(Iconsax.Discover, 'spin');
-export const Copy = createAnimatedIcon(Iconsax.Copy, 'pop');
-export const Database = createAnimatedIcon(Iconsax.Data, 'surge');
-export const Download = createAnimatedIcon(Iconsax.ImportCurve, 'bounceDown');
-export const Edit2 = createAnimatedIcon(Iconsax.Edit2, 'default');
-export const ExternalLink = createAnimatedIcon(Iconsax.ExportSquare, 'plane');
-export const Eye = createAnimatedIcon(Iconsax.Eye, 'blink');
-export const EyeOff = createAnimatedIcon(Iconsax.EyeSlash, 'blink');
-export const FileSpreadsheet = createAnimatedIcon(Iconsax.DocumentCode, 'page');
-export const FileText = createAnimatedIcon(Iconsax.DocumentText, 'page');
-export const Filter = createAnimatedIcon(Iconsax.Filter, 'pop');
-export const Gift = createAnimatedIcon(Iconsax.Gift, 'heart');
-export const Globe = createAnimatedIcon(Iconsax.Global, 'spin');
-export const HelpCircle = createAnimatedIcon(Iconsax.InfoCircle, 'pop');
-export const Info = createAnimatedIcon(Iconsax.InfoCircle, 'pop');
-export const Key = createAnimatedIcon(Iconsax.Key, 'spin');
-export const Layers = createAnimatedIcon(Iconsax.Layer, 'surge');
-export const LayoutGrid = createAnimatedIcon(Iconsax.Element4, 'pop');
-export const List = createAnimatedIcon(Iconsax.Task, 'page');
-export const Lock = createAnimatedIcon(Iconsax.Lock1, 'lock');
-export const LogOut = createAnimatedIcon(Iconsax.LogoutCurve, 'plane');
-export const Maximize2 = createAnimatedIcon(Iconsax.Maximize2, 'pop');
-export const MessageSquare = createAnimatedIcon(Iconsax.Messages1, 'avatar');
-export const Moon = createAnimatedIcon(Iconsax.Moon, 'moon');
-export const MousePointer = createAnimatedIcon(Iconsax.Mouse, 'default');
-export const Orbit = createAnimatedIcon(Iconsax.Hierarchy, 'spin');
-export const Palette = createAnimatedIcon(Iconsax.Colorfilter, 'twinkle');
-export const PartyPopper = createAnimatedIcon(Iconsax.MagicStar, 'twinkle');
-export const Pause = createAnimatedIcon(Iconsax.Pause, 'pop');
-export const Play = createAnimatedIcon(Iconsax.Play, 'pop');
-export const Plus = createAnimatedIcon(Iconsax.Add, 'plus');
-export const Printer = createAnimatedIcon(Iconsax.Printer, 'bounceDown');
-export const Radio = createAnimatedIcon(Iconsax.Radio, 'wave');
-export const RefreshCw = createAnimatedIcon(Iconsax.Refresh2, 'spin');
-export const RotateCcw = createAnimatedIcon(Iconsax.RotateLeft, 'rotateCcw');
-export const Save = createAnimatedIcon(Iconsax.Save2, 'pop');
-export const Search = createAnimatedIcon(Iconsax.SearchNormal1, 'search');
-export const Send = createAnimatedIcon(Iconsax.Send2, 'plane');
-export const Settings = createAnimatedIcon(Iconsax.Setting2, 'gear');
-export const Share2 = createAnimatedIcon(Iconsax.Share, 'plane');
-export const ShieldAlert = createAnimatedIcon(Iconsax.ShieldCross, 'bell');
-export const ShieldCheck = createAnimatedIcon(Iconsax.ShieldTick, 'pop');
-export const Shuffle = createAnimatedIcon(Iconsax.Shuffle, 'spin');
-export const Sliders = createAnimatedIcon(Iconsax.Slider, 'gear');
-export const Smile = createAnimatedIcon(Iconsax.Happyemoji, 'heart');
-export const Sparkle = createAnimatedIcon(Iconsax.MagicStar, 'twinkle');
-export const Sparkles = createAnimatedIcon(Iconsax.MagicStar, 'twinkle');
-export const Sun = createAnimatedIcon(Iconsax.Sun1, 'sun');
-export const Trash2 = createAnimatedIcon(Iconsax.Trash, 'trash');
-export const TrendingUp = createAnimatedIcon(Iconsax.TrendUp, 'surge');
-export const Upload = createAnimatedIcon(Iconsax.ExportCurve, 'bounceUp');
-export const User = createAnimatedIcon(Iconsax.Profile, 'avatar');
-export const UserCheck = createAnimatedIcon(Iconsax.UserTick, 'avatar');
-export const UserPlus = createAnimatedIcon(Iconsax.UserAdd, 'avatar');
-export const Users = createAnimatedIcon(Iconsax.Profile2User, 'avatar');
-export const Volume2 = createAnimatedIcon(Iconsax.VolumeHigh, 'wave');
-export const VolumeX = createAnimatedIcon(Iconsax.VolumeCross, 'wave');
-export const Waves = createAnimatedIcon(Iconsax.AudioSquare, 'wave');
-export const X = createAnimatedIcon(Iconsax.CloseCircle, 'pop');
-export const Zap = createAnimatedIcon(Iconsax.Flash, 'twinkle');
-
-// Export Iconsax library direct access as well
-export { Iconsax };
+export const Activity = createAnimatedIcon(IconsaxActivity, 'surge');
+export const AlertCircle = createAnimatedIcon(IconsaxDanger, 'bell');
+export const AlertTriangle = createAnimatedIcon(IconsaxWarning2, 'bell');
+export const ArrowLeft = createAnimatedIcon(IconsaxArrowLeft2, 'left');
+export const ArrowRight = createAnimatedIcon(IconsaxArrowRight2, 'right');
+export const BookOpen = createAnimatedIcon(IconsaxBook1, 'page');
+export const Bot = createAnimatedIcon(IconsaxSmartCar, 'avatar');
+export const Briefcase = createAnimatedIcon(IconsaxBriefcase, 'default');
+export const Calculator = createAnimatedIcon(IconsaxCalculator, 'pop');
+export const Calendar = createAnimatedIcon(IconsaxCalendar, 'page');
+export const Check = createAnimatedIcon(IconsaxTickCircle, 'pop');
+export const CheckCircle = createAnimatedIcon(IconsaxTickCircle, 'pop');
+export const CheckCircle2 = createAnimatedIcon(IconsaxTickCircle, 'pop');
+export const CheckSquare = createAnimatedIcon(IconsaxTickSquare, 'pop');
+export const ChevronDown = createAnimatedIcon(IconsaxArrowDown2, 'down');
+export const ChevronLeft = createAnimatedIcon(IconsaxArrowLeft2, 'left');
+export const ChevronRight = createAnimatedIcon(IconsaxArrowRight2, 'right');
+export const ChevronUp = createAnimatedIcon(IconsaxArrowUp2, 'up');
+export const Clock = createAnimatedIcon(IconsaxClock, 'spin');
+export const Coffee = createAnimatedIcon(IconsaxCoffee, 'default');
+export const Coins = createAnimatedIcon(IconsaxCoin, 'pop');
+export const Compass = createAnimatedIcon(IconsaxDiscover, 'spin');
+export const Copy = createAnimatedIcon(IconsaxCopy, 'pop');
+export const Database = createAnimatedIcon(IconsaxData, 'surge');
+export const Download = createAnimatedIcon(IconsaxImportCurve, 'bounceDown');
+export const Edit2 = createAnimatedIcon(IconsaxEdit2, 'default');
+export const ExternalLink = createAnimatedIcon(IconsaxExportSquare, 'plane');
+export const Eye = createAnimatedIcon(IconsaxEye, 'blink');
+export const EyeOff = createAnimatedIcon(IconsaxEyeSlash, 'blink');
+export const FileSpreadsheet = createAnimatedIcon(IconsaxDocumentCode, 'page');
+export const FileText = createAnimatedIcon(IconsaxDocumentText, 'page');
+export const Filter = createAnimatedIcon(IconsaxFilter, 'pop');
+export const Gift = createAnimatedIcon(IconsaxGift, 'heart');
+export const Globe = createAnimatedIcon(IconsaxGlobal, 'spin');
+export const HelpCircle = createAnimatedIcon(IconsaxInfoCircle, 'pop');
+export const Info = createAnimatedIcon(IconsaxInfoCircle, 'pop');
+export const Key = createAnimatedIcon(IconsaxKey, 'spin');
+export const Layers = createAnimatedIcon(IconsaxLayer, 'surge');
+export const LayoutGrid = createAnimatedIcon(IconsaxElement4, 'pop');
+export const List = createAnimatedIcon(IconsaxTask, 'page');
+export const Lock = createAnimatedIcon(IconsaxLock1, 'lock');
+export const LogOut = createAnimatedIcon(IconsaxLogoutCurve, 'plane');
+export const Maximize2 = createAnimatedIcon(IconsaxMaximize2, 'pop');
+export const Minimize2 = createAnimatedIcon(IconsaxMaximize3, 'pop');
+export const MessageSquare = createAnimatedIcon(IconsaxMessages1, 'avatar');
+export const Moon = createAnimatedIcon(IconsaxMoon, 'moon');
+export const MousePointer = createAnimatedIcon(IconsaxMouse, 'default');
+export const Orbit = createAnimatedIcon(IconsaxHierarchy, 'spin');
+export const Palette = createAnimatedIcon(IconsaxColorfilter, 'twinkle');
+export const PartyPopper = createAnimatedIcon(IconsaxMagicStar, 'twinkle');
+export const Star = createAnimatedIcon(IconsaxStar, 'twinkle');
+export const Flame = createAnimatedIcon(IconsaxFlash, 'twinkle');
+export const Pause = createAnimatedIcon(IconsaxPause, 'pop');
+export const Play = createAnimatedIcon(IconsaxPlay, 'pop');
+export const Plus = createAnimatedIcon(IconsaxAdd, 'plus');
+export const Printer = createAnimatedIcon(IconsaxPrinter, 'bounceDown');
+export const Radio = createAnimatedIcon(IconsaxRadio, 'wave');
+export const RefreshCw = createAnimatedIcon(IconsaxRefresh2, 'spin');
+export const RotateCcw = createAnimatedIcon(IconsaxRotateLeft, 'rotateCcw');
+export const Save = createAnimatedIcon(IconsaxSave2, 'pop');
+export const Search = createAnimatedIcon(IconsaxSearchNormal1, 'search');
+export const Send = createAnimatedIcon(IconsaxSend2, 'plane');
+export const Settings = createAnimatedIcon(IconsaxSetting2, 'gear');
+export const Share2 = createAnimatedIcon(IconsaxShare, 'plane');
+export const ShieldAlert = createAnimatedIcon(IconsaxShieldCross, 'bell');
+export const ShieldCheck = createAnimatedIcon(IconsaxShieldTick, 'pop');
+export const Shuffle = createAnimatedIcon(IconsaxShuffle, 'spin');
+export const Sliders = createAnimatedIcon(IconsaxSlider, 'gear');
+export const Smile = createAnimatedIcon(IconsaxHappyemoji, 'heart');
+export const Sparkle = createAnimatedIcon(IconsaxMagicStar, 'twinkle');
+export const Sparkles = createAnimatedIcon(IconsaxMagicStar, 'twinkle');
+export const Sun = createAnimatedIcon(IconsaxSun1, 'sun');
+export const Trash2 = createAnimatedIcon(IconsaxTrash, 'trash');
+export const TrendingUp = createAnimatedIcon(IconsaxTrendUp, 'surge');
+export const Upload = createAnimatedIcon(IconsaxExportCurve, 'bounceUp');
+export const User = createAnimatedIcon(IconsaxProfile, 'avatar');
+export const UserCheck = createAnimatedIcon(IconsaxUserTick, 'avatar');
+export const UserPlus = createAnimatedIcon(IconsaxUserAdd, 'avatar');
+export const Users = createAnimatedIcon(IconsaxProfile2User, 'avatar');
+export const Volume2 = createAnimatedIcon(IconsaxVolumeHigh, 'wave');
+export const VolumeX = createAnimatedIcon(IconsaxVolumeCross, 'wave');
+export const Waves = createAnimatedIcon(IconsaxAudioSquare, 'wave');
+export const X = createAnimatedIcon(IconsaxCloseCircle, 'pop');
+export const Zap = createAnimatedIcon(IconsaxFlash, 'twinkle');
