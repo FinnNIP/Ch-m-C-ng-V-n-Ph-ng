@@ -11,29 +11,71 @@ import { User as FirebaseUser } from "firebase/auth";
 import { motion, AnimatePresence } from "motion/react";
 import { useSwipeable } from "react-swipeable";
 import { googleSignIn, initAuth, logout } from "./firebase";
+const loadSheetsModule = () => import("./sheets");
 import {
-  checkAndSetupSheets,
-  getEmployees,
-  getTimeLogs,
   getSpreadsheetId,
   setSpreadsheetId,
   extractSpreadsheetId,
-  syncGridDataToStandardSheets,
   DEFAULT_SPREADSHEET_ID,
-} from "./sheets";
+} from "./utils/spreadsheetConfig";
 import { Employee, TimeLog } from "./types";
-import AttendanceTab from "./components/AttendanceTab";
+const AttendanceTab = lazy(() => import("./components/AttendanceTab"));
 const EmployeesTab = lazy(() => import("./components/EmployeesTab"));
 const ReportsTab = lazy(() => import("./components/ReportsTab"));
 const EmployeePortal = lazy(() => import("./components/EmployeePortal"));
 const UserGuide = lazy(() => import("./components/UserGuide"));
 const LogsTab = lazy(() => import("./components/LogsTab"));
 const AiAssistant = lazy(() => import("./components/AiAssistant"));
-import { RandomLoader } from "./components/RandomLoader";
-import { WebGLBackground } from "./components/WebGLBackground";
-import { ZenBackgroundToggle } from "./components/ZenBackgroundToggle";
+const WebGLBackground = lazy(() =>
+  import("./components/WebGLBackground").then((m) => ({
+    default: m.WebGLBackground,
+  }))
+);
+
+const LazyZenBackgroundToggleComponent = lazy(() =>
+  import("./components/ZenBackgroundToggle").then((m) => ({
+    default: m.ZenBackgroundToggle,
+  }))
+);
+const ZenBackgroundToggle: React.FC<{
+  isZenMode: boolean;
+  onToggleZenMode: (val: boolean) => void;
+}> = (props) => (
+  <Suspense fallback={null}>
+    <LazyZenBackgroundToggleComponent {...props} />
+  </Suspense>
+);
+
+const LazyRandomLoaderComponent = lazy(() =>
+  import("./components/RandomLoader").then((m) => ({
+    default: m.RandomLoader,
+  }))
+);
+const RandomLoader: React.FC<any> = (props) => (
+  <Suspense fallback={null}>
+    <LazyRandomLoaderComponent {...props} />
+  </Suspense>
+);
+
+const LazyAmbientSoundControlComponent = lazy(() =>
+  import("./components/AmbientSoundControl").then((m) => ({
+    default: m.AmbientSoundControl,
+  }))
+);
+const AmbientSoundControl: React.FC = () => (
+  <Suspense fallback={null}>
+    <LazyAmbientSoundControlComponent />
+  </Suspense>
+);
+
+const LazySyncProgressBarComponent = lazy(() => import("./components/SyncProgressBar"));
+const SyncProgressBar: React.FC<{ isLoading: boolean; isSyncing: boolean }> = (props) => (
+  <Suspense fallback={null}>
+    <LazySyncProgressBarComponent {...props} />
+  </Suspense>
+);
+
 import { ThemeToggle } from "./components/ThemeToggle";
-import SyncProgressBar from "./components/SyncProgressBar";
 import {
   Clock,
   Users,
@@ -162,12 +204,48 @@ const TabLoadingFallback = () => (
   </div>
 );
 
+const LazyWebGLBackground: React.FC<{ isZenMode?: boolean }> = (props) => {
+  const [shouldMount, setShouldMount] = useState(false);
+
+  useEffect(() => {
+    if (props.isZenMode) {
+      setShouldMount(true);
+      return;
+    }
+    const timer = setTimeout(() => {
+      setShouldMount(true);
+    }, 450);
+    return () => clearTimeout(timer);
+  }, [props.isZenMode]);
+
+  if (!shouldMount) return null;
+
+  return (
+    <Suspense fallback={null}>
+      <WebGLBackground {...props} />
+    </Suspense>
+  );
+};
+
 export default function App() {
   const hasLoadedInitialDataRef = useRef<boolean>(false);
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
-  const [needsAuth, setNeedsAuth] = useState<boolean>(true);
   const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
+  const [needsAuth, setNeedsAuth] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const queryRole = params.get("role");
+      const sessionRole = sessionStorage.getItem("user_role_session");
+      const savedRole = localStorage.getItem("user_role");
+      const activeRole = queryRole || sessionRole || savedRole;
+      if (activeRole === "employee" || activeRole === "guest" || activeRole === "accountant") {
+        return false;
+      }
+    } catch {}
+    return true;
+  });
 
   // Google Sheets state
   const [spreadsheetId, setLocalSpreadsheetId] = useState<string>(() => {
@@ -344,9 +422,19 @@ export default function App() {
   const [pinError, setPinError] = useState<string>(() => "");
 
   // Role based access control (Admin vs Accountant vs Employee)
-  const [role, setRole] = useState<"admin" | "accountant" | "employee">(
-    "admin",
-  );
+  const [role, setRole] = useState<"admin" | "accountant" | "employee">(() => {
+    if (typeof window === "undefined") return "admin";
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const queryRole = params.get("role");
+      const sessionRole = sessionStorage.getItem("user_role_session");
+      const savedRole = localStorage.getItem("user_role");
+      const activeRole = queryRole || sessionRole || savedRole;
+      if (activeRole === "accountant") return "accountant";
+      if (activeRole === "employee" || activeRole === "guest") return "employee";
+    } catch {}
+    return "admin";
+  });
 
   // Dropdown open state for admin tools
   const [isAdminDropdownOpen, setIsAdminDropdownOpen] =
@@ -666,9 +754,17 @@ export default function App() {
     }
   }, [loadAppStateFromServer]);
 
+  // Background prefetch default tabs after initial paint for instant snappy navigation
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      import("./components/AttendanceTab");
+      import("./components/EmployeePortal");
+    }, 500);
+    return () => clearTimeout(timer);
+  }, []);
+
   // Initialize Auth
   useEffect(() => {
-    setIsLoggingIn(true);
     const unsubscribe = initAuth(
       async (firebaseUser, cachedToken) => {
         setIsLoggingIn(false);
@@ -719,6 +815,7 @@ export default function App() {
     async (authToken: string, userEmail?: string) => {
       setIsLoading(true);
       try {
+        const { getEmployees, getTimeLogs } = await loadSheetsModule();
         const fetchedEmployees = await getEmployees(authToken);
         const fetchedLogs = await getTimeLogs(authToken);
         sheetsDataLoadedRef.current = true;
@@ -775,6 +872,7 @@ export default function App() {
       const setup = async () => {
         setIsInitializingSheets(true);
         try {
+          const { checkAndSetupSheets } = await loadSheetsModule();
           await checkAndSetupSheets(token);
           await loadData(token, user?.email || "");
         } catch (err) {
@@ -979,6 +1077,7 @@ export default function App() {
         return;
       }
 
+      const { syncGridDataToStandardSheets } = await loadSheetsModule();
       await syncGridDataToStandardSheets(token);
       await loadData(token, user?.email || "");
       showToast(
@@ -1095,7 +1194,7 @@ export default function App() {
             setEmployees(updatedEmployees);
 
             // Sync to Google Sheets
-            const { saveEmployeesOrder } = await import("./sheets");
+            const { saveEmployeesOrder } = await loadSheetsModule();
             await saveEmployeesOrder(token, updatedEmployees);
 
             // Sync to server backend
@@ -1222,6 +1321,7 @@ export default function App() {
       if (token) {
         setIsInitializingSheets(true);
         try {
+          const { checkAndSetupSheets } = await loadSheetsModule();
           await checkAndSetupSheets(token);
           await loadData(token, user?.email || "");
         } catch (setupErr) {
@@ -1451,7 +1551,7 @@ export default function App() {
           onToggleZenMode={setIsZenBackgroundMode}
         />
         <SyncProgressBar isLoading={isLoading} isSyncing={isSyncingGrid} />
-        <WebGLBackground isZenMode={isZenBackgroundMode} />
+        <LazyWebGLBackground isZenMode={isZenBackgroundMode} />
         <div className={isZenBackgroundMode ? "hidden" : "relative z-10"}>
           <Suspense fallback={<TabLoadingFallback />}>
             <EmployeePortal
@@ -1487,15 +1587,16 @@ export default function App() {
           isZenMode={isZenBackgroundMode}
           onToggleZenMode={setIsZenBackgroundMode}
         />
-        <WebGLBackground isZenMode={isZenBackgroundMode} />
+        <LazyWebGLBackground isZenMode={isZenBackgroundMode} />
 
         <div className={isZenBackgroundMode ? "hidden" : "contents"}>
         {/* Decorative dynamic Material Design 3 ambient blobs */}
         <div className="absolute top-[-10%] left-[-10%] w-[350px] h-[350px] rounded-full bg-indigo-400/10 blur-[90px] pointer-events-none" />
         <div className="absolute bottom-[-10%] right-[-10%] w-[400px] h-[400px] rounded-full bg-sky-400/10 blur-[110px] pointer-events-none" />
 
-        {/* Floating Theme Toggle */}
-        <div className="absolute top-6 right-6 z-50">
+        {/* Floating Controls */}
+        <div className="absolute top-6 right-6 z-50 flex items-center gap-2">
+          <AmbientSoundControl />
           <ThemeToggle isDarkMode={isDarkMode} onChange={setIsDarkMode} />
         </div>
 
@@ -1929,7 +2030,7 @@ export default function App() {
           isZenMode={isZenBackgroundMode}
           onToggleZenMode={setIsZenBackgroundMode}
         />
-        <WebGLBackground isZenMode={isZenBackgroundMode} />
+        <LazyWebGLBackground isZenMode={isZenBackgroundMode} />
         <div className={isZenBackgroundMode ? "hidden" : "contents"}>
         <div className="absolute top-[-20%] left-[-10%] w-[300px] h-[300px] rounded-full bg-rose-400/10 blur-[80px]" />
 
@@ -1981,7 +2082,7 @@ export default function App() {
           isZenMode={isZenBackgroundMode}
           onToggleZenMode={setIsZenBackgroundMode}
         />
-        <WebGLBackground isZenMode={isZenBackgroundMode} />
+        <LazyWebGLBackground isZenMode={isZenBackgroundMode} />
         <div className={isZenBackgroundMode ? "hidden" : "contents"}>
         <div className="absolute top-[-20%] left-[-10%] w-[300px] h-[300px] rounded-full bg-indigo-400/10 blur-[80px]" />
 
@@ -2096,7 +2197,7 @@ export default function App() {
         onToggleZenMode={setIsZenBackgroundMode}
       />
       <SyncProgressBar isLoading={isLoading} isSyncing={isSyncingGrid} />
-      <WebGLBackground isZenMode={isZenBackgroundMode} />
+      <LazyWebGLBackground isZenMode={isZenBackgroundMode} />
 
       <div className={isZenBackgroundMode ? "hidden" : "contents"}>
       {/* Interactive Parallax Ambient Glowing Blobs */}
@@ -2198,8 +2299,9 @@ export default function App() {
                   </span>
                 )}
 
-                {/* Dark/Light Switch Button */}
+                {/* Ambient Music & Dark/Light Switch Button */}
                 <div className="flex items-center gap-1.5">
+                  <AmbientSoundControl />
                   <ThemeToggle
                     isDarkMode={isDarkMode}
                     onChange={setIsDarkMode}
@@ -2624,18 +2726,18 @@ export default function App() {
             transition={{ ease: [0.3, 0, 0.2, 1], duration: 0.45 }}
             className="w-full"
           >
-            {token && activeTab === "attendance" && (
-              <AttendanceTab
-                accessToken={token}
-                onShowToast={showToast}
-                employees={employees}
-                timeLogs={timeLogs}
-                onLogAdded={triggerRefresh}
-                isLoading={isLoading}
-              />
-            )}
-
             <Suspense fallback={<TabLoadingFallback />}>
+              {token && activeTab === "attendance" && (
+                <AttendanceTab
+                  accessToken={token}
+                  onShowToast={showToast}
+                  employees={employees}
+                  timeLogs={timeLogs}
+                  onLogAdded={triggerRefresh}
+                  isLoading={isLoading}
+                />
+              )}
+
               {token && activeTab === "employees" && (
                 <EmployeesTab
                   accessToken={token}

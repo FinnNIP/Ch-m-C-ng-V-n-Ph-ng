@@ -1,4 +1,5 @@
 import express from "express";
+import compression from "compression";
 import path from "path";
 import dotenv from "dotenv";
 import { GoogleGenAI } from "@google/genai";
@@ -186,6 +187,14 @@ const saveStateToDisk = () => {
 async function startServer() {
   const app = express();
   const PORT = 3000;
+
+  // Ultra-fast response compression (reduces transferred JS/CSS/JSON payloads by ~80-85%)
+  app.use(
+    compression({
+      threshold: 1024,
+      level: 6,
+    })
+  );
 
   // Set payload limit for base64 images
   app.use(express.json({ limit: "20mb" }));

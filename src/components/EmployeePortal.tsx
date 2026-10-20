@@ -31,6 +31,7 @@ import UserGuide from "./UserGuide";
 import { getDisplayNameFromList } from "../utils/nameUtils";
 import { RandomLoader } from "./RandomLoader";
 import { ThemeToggle } from "./ThemeToggle";
+import { AmbientSoundControl } from "./AmbientSoundControl";
 import { playTabSound, playConfirmSound } from "../sound";
 
 // Custom hook to track window size for responsive layout adjustments
@@ -463,6 +464,8 @@ export default function EmployeePortal({
             />
             <span>{isOnline ? "Trực tuyến" : "Ngoại tuyến"}</span>
           </div>
+
+          <AmbientSoundControl compact />
 
           {onToggleDarkMode && isDarkMode !== undefined && (
             <ThemeToggle isDarkMode={isDarkMode} onChange={onToggleDarkMode} />

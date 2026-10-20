@@ -9,20 +9,22 @@ export default defineConfig(() => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
-        'lucide-react': path.resolve(__dirname, 'src/components/icons'),
       },
     },
     optimizeDeps: {
       include: [
         'react',
         'react-dom',
+        'lucide-react',
         'motion/react',
-        'iconsax-react',
         'firebase/app',
         'firebase/auth',
       ],
     },
     build: {
+      target: 'es2022',
+      cssMinify: 'esbuild',
+      minify: 'esbuild',
       rollupOptions: {
         output: {
           manualChunks(id) {
@@ -30,7 +32,7 @@ export default defineConfig(() => {
               if (id.includes('recharts')) return 'vendor-recharts';
               if (id.includes('motion')) return 'vendor-motion';
               if (id.includes('firebase')) return 'vendor-firebase';
-              if (id.includes('iconsax-react')) return 'vendor-iconsax';
+              if (id.includes('lucide-react')) return 'vendor-icons';
               if (id.includes('react') || id.includes('react-dom')) return 'vendor-core';
             }
           },

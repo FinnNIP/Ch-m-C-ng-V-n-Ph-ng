@@ -25,7 +25,13 @@ import {
   Plus,
   Sun,
   Moon,
+  Music,
+  Volume2,
+  VolumeX,
+  Play,
+  Pause,
 } from 'lucide-react';
+import { ambientAudio, AMBIENT_TRACKS, AmbientTrackId } from '../ambientAudio';
 
 interface PresetTheme {
   id: string;
@@ -186,10 +192,16 @@ export function ZenBackgroundToggle(props: ZenBackgroundToggleProps) {
 
   // Compact Popover & Immersion mode states
   const [isColorStudioOpen, setIsColorStudioOpen] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<'custom' | 'themes' | 'stars' | 'favorites'>('custom');
+  const [activeTab, setActiveTab] = useState<'custom' | 'themes' | 'stars' | 'audio' | 'favorites'>('custom');
   const [isCompletelyHidden, setIsCompletelyHidden] = useState<boolean>(false);
   const [isHovered, setIsHovered] = useState<boolean>(false);
   const [isIdle, setIsIdle] = useState<boolean>(false);
+
+  // Ambient soundscape audio state
+  const [ambientAudioState, setAmbientAudioState] = useState(ambientAudio.getState());
+  useEffect(() => {
+    return ambientAudio.subscribe(setAmbientAudioState);
+  }, []);
 
   // Feedback toast message (compact floating pill)
   const [toastMsg, setToastMsg] = useState<string>('');
@@ -600,6 +612,28 @@ export function ZenBackgroundToggle(props: ZenBackgroundToggleProps) {
                 <span className="text-[11px]">Lưu</span>
               </button>
 
+              {/* Quick Ambient Sound Toggle */}
+              <button
+                type="button"
+                onClick={() => {
+                  const started = ambientAudio.toggle();
+                  setToastMsg(started ? '🎶 Đang phát nhạc nền vũ trụ' : '🔇 Đã tắt nhạc nền');
+                  setTimeout(() => setToastMsg(''), 2000);
+                }}
+                className={`p-1.5 rounded-full transition-colors cursor-pointer active:scale-90 ${
+                  ambientAudioState.isPlaying
+                    ? 'text-pink-400 bg-pink-500/20 shadow-xs'
+                    : 'text-slate-400 hover:text-white hover:bg-white/10'
+                }`}
+                title={
+                  ambientAudioState.isPlaying
+                    ? 'Tạm dừng âm thanh nền vũ trụ'
+                    : 'Bật âm thanh nền vũ trụ thư giãn'
+                }
+              >
+                <Music className="w-3.5 h-3.5" />
+              </button>
+
               <div className="w-[1px] h-3.5 bg-white/15 mx-0.5" />
 
               {/* Hide completely into Ghost Mode */}
@@ -658,53 +692,65 @@ export function ZenBackgroundToggle(props: ZenBackgroundToggleProps) {
                 </div>
 
                 {/* Sub-tab Navigation */}
-                <div className="grid grid-cols-4 bg-slate-900/80 p-1 rounded-2xl border border-white/10 text-[10px] font-bold">
+                <div className="grid grid-cols-5 bg-slate-900/80 p-1 rounded-2xl border border-white/10 text-[9.5px] font-bold">
                   <button
                     type="button"
                     onClick={() => setActiveTab('custom')}
-                    className={`py-1 px-1 rounded-xl text-center transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                    className={`py-1 px-0.5 rounded-xl text-center transition-all cursor-pointer flex items-center justify-center gap-1 ${
                       activeTab === 'custom'
                         ? 'bg-cyan-500 text-slate-950 font-black shadow-xs'
                         : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    <Sliders className="w-3 h-3" />
-                    <span>Màu & Sáng</span>
+                    <Sliders className="w-2.5 h-2.5" />
+                    <span>Màu</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setActiveTab('themes')}
-                    className={`py-1 px-1 rounded-xl text-center transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                    className={`py-1 px-0.5 rounded-xl text-center transition-all cursor-pointer flex items-center justify-center gap-1 ${
                       activeTab === 'themes'
                         ? 'bg-cyan-500 text-slate-950 font-black shadow-xs'
                         : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    <Palette className="w-3 h-3" />
+                    <Palette className="w-2.5 h-2.5" />
                     <span>Chủ Đề</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setActiveTab('stars')}
-                    className={`py-1 px-1 rounded-xl text-center transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                    className={`py-1 px-0.5 rounded-xl text-center transition-all cursor-pointer flex items-center justify-center gap-1 ${
                       activeTab === 'stars'
                         ? 'bg-cyan-500 text-slate-950 font-black shadow-xs'
                         : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    <Orbit className="w-3 h-3" />
+                    <Orbit className="w-2.5 h-2.5" />
                     <span>Vũ Trụ</span>
                   </button>
                   <button
                     type="button"
+                    onClick={() => setActiveTab('audio')}
+                    className={`py-1 px-0.5 rounded-xl text-center transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                      activeTab === 'audio'
+                        ? 'bg-pink-500 text-slate-950 font-black shadow-xs'
+                        : 'text-pink-300/80 hover:text-pink-200'
+                    }`}
+                  >
+                    <Music className="w-2.5 h-2.5" />
+                    <span>Âm Nền</span>
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setActiveTab('favorites')}
-                    className={`py-1 px-1 rounded-xl text-center transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                    className={`py-1 px-0.5 rounded-xl text-center transition-all cursor-pointer flex items-center justify-center gap-1 ${
                       activeTab === 'favorites'
                         ? 'bg-amber-400 text-slate-950 font-black shadow-xs'
                         : 'text-amber-300/80 hover:text-amber-200'
                     }`}
                   >
-                    <Star className="w-3 h-3 fill-current" />
+                    <Star className="w-2.5 h-2.5 fill-current" />
                     <span>Mẫu Lưu</span>
                   </button>
                 </div>
@@ -1074,7 +1120,138 @@ export function ZenBackgroundToggle(props: ZenBackgroundToggleProps) {
                   </div>
                 )}
 
-                {/* TAB 4: SAVED PROFILES */}
+                {/* TAB 4: AMBIENT SOUNDSCAPE */}
+                {activeTab === 'audio' && (
+                  <div className="space-y-3">
+                    {/* Master Play / Pause & Status */}
+                    <div className="bg-slate-900/80 p-3 rounded-2xl border border-white/10 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const started = ambientAudio.toggle();
+                              setToastMsg(started ? '🎶 Đang phát nhạc nền' : '🔇 Đã tắt nhạc nền');
+                              setTimeout(() => setToastMsg(''), 1800);
+                            }}
+                            className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer shadow-md ${
+                              ambientAudioState.isPlaying
+                                ? 'bg-gradient-to-tr from-pink-500 to-rose-500 text-white shadow-pink-500/25'
+                                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                            }`}
+                          >
+                            {ambientAudioState.isPlaying ? (
+                              <Pause className="w-4 h-4 fill-current" />
+                            ) : (
+                              <Play className="w-4 h-4 fill-current ml-0.5" />
+                            )}
+                          </button>
+                          <div>
+                            <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                              {ambientAudioState.isPlaying ? 'Đang phát âm nền' : 'Đang tắt'}
+                              {ambientAudioState.isPlaying && (
+                                <span className="w-1.5 h-1.5 rounded-full bg-pink-500 animate-ping inline-block" />
+                              )}
+                            </div>
+                            <div className="text-[10px] text-slate-400">
+                              0 KB tải về • Tự sinh bằng Web Audio
+                            </div>
+                          </div>
+                        </div>
+
+                        <span
+                          className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full ${
+                            ambientAudioState.isPlaying
+                              ? 'bg-pink-950 text-pink-300 border border-pink-500/30'
+                              : 'bg-slate-800 text-slate-400'
+                          }`}
+                        >
+                          {ambientAudioState.isPlaying ? 'PLAYING' : 'OFF'}
+                        </span>
+                      </div>
+
+                      {/* Volume Slider */}
+                      <div className="pt-1 border-t border-white/5">
+                        <div className="flex items-center justify-between text-[10px] font-bold text-slate-300 mb-1">
+                          <span className="flex items-center gap-1 text-slate-400">
+                            {ambientAudioState.volume === 0 ? (
+                              <VolumeX className="w-3 h-3" />
+                            ) : (
+                              <Volume2 className="w-3 h-3 text-pink-400" />
+                            )}
+                            Âm lượng nhạc nền
+                          </span>
+                          <span className="font-mono text-cyan-400">
+                            {Math.round(ambientAudioState.volume * 100)}%
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="1"
+                          step="0.01"
+                          value={ambientAudioState.volume}
+                          onChange={(e) => ambientAudio.setVolume(parseFloat(e.target.value))}
+                          className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-pink-500"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Soundscape presets */}
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block px-1">
+                        Chọn Không Gian Âm Thanh
+                      </span>
+                      <div className="space-y-1.5">
+                        {AMBIENT_TRACKS.map((t) => {
+                          const isSelected = ambientAudioState.track === t.id;
+                          return (
+                            <button
+                              key={t.id}
+                              type="button"
+                              onClick={() => {
+                                ambientAudio.setTrack(t.id);
+                                if (!ambientAudioState.isPlaying) ambientAudio.start();
+                                setToastMsg(`🎶 Chuyển: ${t.name}`);
+                                setTimeout(() => setToastMsg(''), 1800);
+                              }}
+                              className={`w-full text-left p-2 rounded-xl border transition-all flex items-center justify-between cursor-pointer ${
+                                isSelected
+                                  ? 'bg-pink-950/40 border-pink-500/50 text-white shadow-xs'
+                                  : 'bg-slate-900/50 border-white/5 hover:border-white/15 text-slate-300 hover:text-white'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm">{t.icon}</span>
+                                <div>
+                                  <div className="text-xs font-bold text-white flex items-center gap-1">
+                                    {t.name}
+                                    {isSelected && (
+                                      <span className="text-[8px] px-1 py-0.2 rounded bg-pink-500 text-slate-950 font-black">
+                                        Đang chọn
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-[9px] text-slate-400 line-clamp-1">
+                                    {t.description}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {isSelected ? (
+                                <Check className="w-3.5 h-3.5 text-pink-400 shrink-0" />
+                              ) : (
+                                <div className="w-3 h-3 rounded-full border border-white/20 shrink-0" />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 5: SAVED PROFILES */}
                 {activeTab === 'favorites' && (
                   <div className="space-y-2.5">
                     <button
