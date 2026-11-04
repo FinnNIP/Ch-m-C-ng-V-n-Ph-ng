@@ -5536,6 +5536,13 @@
   },
   "auditLogs": [
     {
+      "id": "log_1793783166136_qniq0",
+      "timestamp": "2026-11-04T09:06:06.136Z",
+      "user": "Nhân viên (Guest)",
+      "action": "Truy cập Cổng tra cứu nhân viên",
+      "details": "Truy cập từ IP: 127.0.0.1"
+    },
+    {
       "id": "log_1788755644408_q6yo3",
       "timestamp": "2026-09-07T04:34:04.408Z",
       "user": "Kế toán (Guest)",

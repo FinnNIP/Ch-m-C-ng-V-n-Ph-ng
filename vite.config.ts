@@ -14,12 +14,20 @@ export default defineConfig(() => {
     optimizeDeps: {
       include: [
         'react',
+        'react/jsx-runtime',
+        'react/jsx-dev-runtime',
         'react-dom',
+        'react-dom/client',
         'lucide-react',
         'motion/react',
         'firebase/app',
         'firebase/auth',
+        'react-swipeable',
+        'canvas-confetti',
       ],
+      esbuildOptions: {
+        target: 'es2022',
+      },
     },
     build: {
       target: 'es2022',

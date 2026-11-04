@@ -212,17 +212,38 @@ const LazyWebGLBackground: React.FC<{ isZenMode?: boolean }> = (props) => {
       setShouldMount(true);
       return;
     }
-    const timer = setTimeout(() => {
-      setShouldMount(true);
-    }, 450);
-    return () => clearTimeout(timer);
+    // Only mount heavy WebGL shaders & canvas loop after initial UI is completely painted and idle
+    let timerId: any = null;
+    let idleId: any = null;
+
+    const activate = () => setShouldMount(true);
+
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      idleId = (window as any).requestIdleCallback(activate, { timeout: 3500 });
+    } else {
+      timerId = setTimeout(activate, 2500);
+    }
+
+    return () => {
+      if (timerId) clearTimeout(timerId);
+      if (idleId && typeof window !== "undefined" && "cancelIdleCallback" in window) {
+        (window as any).cancelIdleCallback(idleId);
+      }
+    };
   }, [props.isZenMode]);
 
   if (!shouldMount) return null;
 
   return (
     <Suspense fallback={null}>
-      <WebGLBackground {...props} />
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.8 }}
+        className="contents"
+      >
+        <WebGLBackground {...props} />
+      </motion.div>
     </Suspense>
   );
 };
@@ -537,7 +558,10 @@ export default function App() {
   const loadAppStateFromServer = useCallback(
     async (currentRole: string, currentKey?: string, currentEmail?: string) => {
       try {
-        setIsLoading(true);
+        const hasCachedEmp = Boolean(localStorage.getItem("cached_employees"));
+        if (!hasCachedEmp) {
+          setIsLoading(true);
+        }
         const queryParams = new URLSearchParams();
         if (currentRole) queryParams.set("role", currentRole);
         if (currentKey) queryParams.set("key", currentKey);
@@ -754,13 +778,28 @@ export default function App() {
     }
   }, [loadAppStateFromServer]);
 
-  // Background prefetch default tabs after initial paint for instant snappy navigation
+  // Background prefetch default tabs only after main screen is completely idle
   useEffect(() => {
-    const timer = setTimeout(() => {
+    let timerId: any = null;
+    let idleId: any = null;
+
+    const doPrefetch = () => {
       import("./components/AttendanceTab");
       import("./components/EmployeePortal");
-    }, 500);
-    return () => clearTimeout(timer);
+    };
+
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      idleId = (window as any).requestIdleCallback(doPrefetch, { timeout: 4500 });
+    } else {
+      timerId = setTimeout(doPrefetch, 3000);
+    }
+
+    return () => {
+      if (timerId) clearTimeout(timerId);
+      if (idleId && typeof window !== "undefined" && "cancelIdleCallback" in window) {
+        (window as any).cancelIdleCallback(idleId);
+      }
+    };
   }, []);
 
   // Initialize Auth
@@ -2232,7 +2271,7 @@ export default function App() {
 
       {/* Main Header / Navigation */}
       <header className="bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800/80 shadow-sm sticky top-0 z-40 transition-colors duration-300">
-        <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8 pl-32 sm:pl-36 md:pl-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="min-h-[64px] py-2 sm:py-0 sm:h-16 flex flex-col sm:flex-row justify-between items-center gap-3 sm:gap-0">
             {/* Logo and Greeting */}
             <div className="flex items-center justify-between w-full sm:w-auto gap-3 shrink-0">
@@ -2299,9 +2338,17 @@ export default function App() {
                   </span>
                 )}
 
-                {/* Ambient Music & Dark/Light Switch Button */}
+                {/* Ambient Music, Zen Mode & Dark/Light Switch Button */}
                 <div className="flex items-center gap-1.5">
                   <AmbientSoundControl />
+                  <button
+                    onClick={() => setIsZenBackgroundMode(true)}
+                    className="p-2 px-3 bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800 text-slate-600 dark:text-slate-300 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm cursor-pointer flex items-center justify-center gap-1.5 text-xs font-bold transition-all shrink-0 hover:border-cyan-400 hover:text-cyan-500 active:scale-95"
+                    title="Bật chế độ chỉ xem Nền & Sao (Zen Mode)"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+                    <span className="hidden xl:inline text-xs">Nền & Sao</span>
+                  </button>
                   <ThemeToggle
                     isDarkMode={isDarkMode}
                     onChange={setIsDarkMode}

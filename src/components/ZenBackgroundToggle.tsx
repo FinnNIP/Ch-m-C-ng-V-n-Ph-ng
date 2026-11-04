@@ -476,7 +476,11 @@ export function ZenBackgroundToggle(props: ZenBackgroundToggleProps) {
 
   return (
     <div
-      className="fixed top-3 left-3 sm:top-4 sm:left-4 z-[99999] font-sans no-print select-none"
+      className={`fixed z-[99999] font-sans no-print select-none transition-all duration-300 ${
+        isZenMode
+          ? 'top-3 left-3 sm:top-4 sm:left-4'
+          : 'bottom-6 left-[188px] sm:left-[195px]'
+      }`}
       style={{ isolation: 'isolate' }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
